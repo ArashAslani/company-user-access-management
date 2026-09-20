@@ -2,11 +2,9 @@
 
 namespace CleanArchitecture.Domain.Common;
 
-public abstract class BaseEntity
+public abstract class BaseEntity<TId> where TId : notnull
 {
-    // This can easily be modified to be BaseEntity<T> and public T Id to support different key types.
-    // Using non-generic integer types for simplicity
-    public int Id { get; set; }
+    public virtual TId? Id { get; protected set; }
 
     private readonly List<BaseEvent> _domainEvents = new();
 
@@ -27,4 +25,8 @@ public abstract class BaseEntity
     {
         _domainEvents.Clear();
     }
+}
+
+public abstract class BaseEntity : BaseEntity<Guid>
+{
 }

@@ -45,7 +45,7 @@ public class CreateTodoListTests : TestBase
 
         list.ShouldNotBeNull();
         list!.Title.ShouldBe(command.Title);
-        list.CreatedBy.ShouldBe(userId);
+        list.CreatedBy.ShouldBe(userId.ToString());
         list.Created.ShouldBe(DateTime.Now, TimeSpan.FromMilliseconds(10000));
     }
 }

@@ -10,7 +10,7 @@ namespace CleanArchitecture.Application.FunctionalTests.Infrastructure;
 
 public static class TestApp
 {
-    private static string? _userId;
+    private static Guid? _userId;
     private static List<string>? _roles;
 
     public static async Task<TResponse> SendAsync<TResponse>(IRequest<TResponse> request)
@@ -31,21 +31,21 @@ public static class TestApp
         await mediator.Send(request);
     }
 
-    public static string? GetUserId() => _userId;
+    public static Guid? GetUserId() => _userId;
 
     public static List<string>? GetRoles() => _roles;
 
-    public static async Task<string> RunAsDefaultUserAsync()
+    public static async Task<Guid> RunAsDefaultUserAsync()
     {
         return await RunAsUserAsync("test@local", "Testing1234!", []);
     }
 
-    public static async Task<string> RunAsAdministratorAsync()
+    public static async Task<Guid> RunAsAdministratorAsync()
     {
         return await RunAsUserAsync("administrator@local", "Administrator1234!", [Roles.Administrator]);
     }
 
-    public static async Task<string> RunAsUserAsync(string userName, string password, string[] roles)
+    public static async Task<Guid> RunAsUserAsync(string userName, string password, string[] roles)
     {
         using var scope = FunctionalTestSetup.ScopeFactory.CreateScope();
 
@@ -57,11 +57,11 @@ public static class TestApp
 
         if (roles.Length > 0)
         {
-            var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+            var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
 
             foreach (var role in roles)
             {
-                await roleManager.CreateAsync(new IdentityRole(role));
+                await roleManager.CreateAsync(new IdentityRole<Guid>(role));
             }
 
             await userManager.AddToRolesAsync(user, roles);
@@ -71,7 +71,7 @@ public static class TestApp
         {
             _userId = user.Id;
             _roles = [..roles];
-            return _userId;
+            return _userId.Value;
         }
 
         var errors = string.Join(Environment.NewLine, result.ToApplicationResult().Errors);

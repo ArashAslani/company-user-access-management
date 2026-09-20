@@ -50,7 +50,7 @@ public class UpdateTodoItemDetailTests : TestBase
         item.Note.ShouldBe(command.Note);
         item.Priority.ShouldBe(command.Priority);
         item.LastModifiedBy.ShouldNotBeNull();
-        item.LastModifiedBy.ShouldBe(userId);
+        item.LastModifiedBy.ShouldBe(userId.ToString());
         item.LastModified.ShouldBe(DateTime.Now, TimeSpan.FromMilliseconds(10000));
     }
 }

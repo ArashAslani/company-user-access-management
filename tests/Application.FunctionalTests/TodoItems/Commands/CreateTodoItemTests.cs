@@ -38,9 +38,9 @@ public class CreateTodoItemTests : TestBase
         item.ShouldNotBeNull();
         item!.ListId.ShouldBe(command.ListId);
         item.Title.ShouldBe(command.Title);
-        item.CreatedBy.ShouldBe(userId);
+        item.CreatedBy.ShouldBe(userId.ToString());
         item.Created.ShouldBe(DateTime.Now, TimeSpan.FromMilliseconds(10000));
-        item.LastModifiedBy.ShouldBe(userId);
+        item.LastModifiedBy.ShouldBe(userId.ToString());
         item.LastModified.ShouldBe(DateTime.Now, TimeSpan.FromMilliseconds(10000));
     }
 }

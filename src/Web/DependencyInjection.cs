@@ -1,7 +1,9 @@
 using Azure.Identity;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Infrastructure.Data;
+using CleanArchitecture.Web.Authorization;
 using CleanArchitecture.Web.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Microsoft.Extensions.DependencyInjection;
@@ -13,8 +15,12 @@ public static class DependencyInjection
         builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
         builder.Services.AddScoped<IUser, CurrentUser>();
+        builder.Services.AddScoped<ICurrentWorkspace, CurrentWorkspace>();
 
         builder.Services.AddHttpContextAccessor();
+
+        builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+        builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
 
         builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
 

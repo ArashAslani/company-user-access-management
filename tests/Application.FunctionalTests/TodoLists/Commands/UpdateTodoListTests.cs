@@ -62,7 +62,7 @@ public class UpdateTodoListTests : TestBase
         list.ShouldNotBeNull();
         list!.Title.ShouldBe(command.Title);
         list.LastModifiedBy.ShouldNotBeNull();
-        list.LastModifiedBy.ShouldBe(userId);
+        list.LastModifiedBy.ShouldBe(userId.ToString());
         list.LastModified.ShouldBe(DateTime.Now, TimeSpan.FromMilliseconds(10000));
     }
 }

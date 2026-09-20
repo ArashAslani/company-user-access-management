@@ -1,4 +1,5 @@
-﻿using CleanArchitecture.Domain.Constants;
+﻿using CleanArchitecture.Domain.AccessControl;
+using CleanArchitecture.Domain.Constants;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.ValueObjects;
 using CleanArchitecture.Infrastructure.Identity;
@@ -27,9 +28,9 @@ public class ApplicationDbContextInitialiser
     private readonly ILogger<ApplicationDbContextInitialiser> _logger;
     private readonly ApplicationDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
-    private readonly RoleManager<IdentityRole> _roleManager;
+    private readonly RoleManager<IdentityRole<Guid>> _roleManager;
 
-    public ApplicationDbContextInitialiser(ILogger<ApplicationDbContextInitialiser> logger, ApplicationDbContext context, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager)
+    public ApplicationDbContextInitialiser(ILogger<ApplicationDbContextInitialiser> logger, ApplicationDbContext context, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole<Guid>> roleManager)
     {
         _logger = logger;
         _context = context;
@@ -41,7 +42,6 @@ public class ApplicationDbContextInitialiser
     {
         try
         {
-            // See https://jasontaylor.dev/ef-core-database-initialisation-strategies
             await _context.Database.EnsureDeletedAsync();
             await _context.Database.EnsureCreatedAsync();
         }
@@ -67,8 +67,8 @@ public class ApplicationDbContextInitialiser
 
     public async Task TrySeedAsync()
     {
-        // Default roles
-        var administratorRole = new IdentityRole(Roles.Administrator);
+        // Default Identity roles (for authentication only, not business roles)
+        var administratorRole = new IdentityRole<Guid>(Roles.Administrator);
 
         if (_roleManager.Roles.All(r => r.Name != administratorRole.Name))
         {
@@ -76,7 +76,7 @@ public class ApplicationDbContextInitialiser
         }
 
         // Default users
-        var administrator = new ApplicationUser { UserName = "administrator@localhost", Email = "administrator@localhost" };
+        var administrator = new ApplicationUser { UserName = "administrator@localhost", Email = "administrator@localhost", IsActive = true };
 
         if (_userManager.Users.All(u => u.UserName != administrator.UserName))
         {
@@ -87,8 +87,52 @@ public class ApplicationDbContextInitialiser
             }
         }
 
+        // Seed QC Application
+        var qcApp = new CleanArchitecture.Domain.AccessControl.Application("QC", "Quality Control", "Quality Control Application");
+        _context.Applications.Add(qcApp);
+
+        // Seed Resources and Permissions for QC
+        var productsResource = qcApp.AddResource("Products", "Products", "Product management");
+        productsResource.AddPermission("Read", "Read products");
+        productsResource.AddPermission("Edit", "Edit products");
+        productsResource.AddPermission("Delete", "Delete products");
+
+        var laboratoryResource = qcApp.AddResource("Laboratory", "Laboratory", "Laboratory management");
+        laboratoryResource.AddPermission("Read", "Read laboratory data");
+        laboratoryResource.AddPermission("Approve", "Approve laboratory results");
+
+        var ncrResource = qcApp.AddResource("NCR", "Non-Conformance Reports", "NCR management");
+        ncrResource.AddPermission("Read", "Read NCRs");
+        ncrResource.AddPermission("Approve", "Approve NCRs");
+
+        var organizationResource = qcApp.AddResource("Organization", "Organization", "Organization management");
+        var personnelResource = organizationResource.AddPermission("Personnel.Read", "Read personnel");
+        organizationResource.AddPermission("Personnel.Manage", "Manage personnel");
+        organizationResource.AddPermission("Position.Manage", "Manage positions");
+        organizationResource.AddPermission("Signature.Replace", "Replace signatures");
+        organizationResource.AddPermission("Chart.Read", "Read org chart");
+
+        var accessMgmtResource = qcApp.AddResource("AccessManagement", "Access Management", "Access control management");
+        accessMgmtResource.AddPermission("Role.Manage", "Manage roles");
+        accessMgmtResource.AddPermission("Permission.Assign", "Assign permissions");
+        accessMgmtResource.AddPermission("Audit.Read", "Read audit logs");
+
+        // Add permission implications: Edit => Read
+        var editPerm = productsResource.Permissions.First(p => p.ActionCode == "Edit");
+        var readPerm = productsResource.Permissions.First(p => p.ActionCode == "Read");
+        editPerm.AddImplication(readPerm.Id);
+
+        var labApprove = laboratoryResource.Permissions.First(p => p.ActionCode == "Approve");
+        var labRead = laboratoryResource.Permissions.First(p => p.ActionCode == "Read");
+        labApprove.AddImplication(labRead.Id);
+
+        var ncrApprove = ncrResource.Permissions.First(p => p.ActionCode == "Approve");
+        var ncrRead = ncrResource.Permissions.First(p => p.ActionCode == "Read");
+        ncrApprove.AddImplication(ncrRead.Id);
+
+        await _context.SaveChangesAsync();
+
         // Default data
-        // Seed, if necessary
         if (!_context.TodoLists.Any())
         {
             _context.TodoLists.Add(new TodoList
