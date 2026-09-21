@@ -34,6 +34,13 @@ public sealed class AuthPrincipal : BaseAuditableEntity<Guid>
     {
         _accessRules.Add(rule);
     }
+
+    public void RemoveAccessRule(Guid ruleId)
+    {
+        var rule = _accessRules.FirstOrDefault(r => r.Id == ruleId);
+        if (rule is not null)
+            _accessRules.Remove(rule);
+    }
 }
 
 public enum PrincipalType { UserCompany, Role }
