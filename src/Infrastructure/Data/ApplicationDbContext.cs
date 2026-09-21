@@ -19,6 +19,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<TodoItem> TodoItems => Set<TodoItem>();
 
     // Organization
+    public DbSet<Company> Companies => Set<Company>();
     public DbSet<Personnel> Personnel => Set<Personnel>();
     public DbSet<Position> Positions => Set<Position>();
     public DbSet<PersonnelPosition> PersonnelPositions => Set<PersonnelPosition>();

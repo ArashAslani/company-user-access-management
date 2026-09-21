@@ -12,6 +12,7 @@ public interface IApplicationDbContext
     DbSet<TodoItem> TodoItems { get; }
 
     // Organization
+    DbSet<Company> Companies { get; }
     DbSet<Personnel> Personnel { get; }
     DbSet<Position> Positions { get; }
     DbSet<PersonnelPosition> PersonnelPositions { get; }
