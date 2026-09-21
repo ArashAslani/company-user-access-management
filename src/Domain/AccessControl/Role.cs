@@ -21,9 +21,6 @@ public sealed class Role : BaseAuditableEntity<Guid>
     private readonly List<UserRole> _userRoles = [];
     public IReadOnlyCollection<UserRole> UserRoles => _userRoles.AsReadOnly();
 
-    private readonly List<RoleGroupRole> _roleGroupRoles = [];
-    public IReadOnlyCollection<RoleGroupRole> RoleGroupRoles => _roleGroupRoles.AsReadOnly();
-
     private readonly List<AccessRule> _accessRules = [];
     public IReadOnlyCollection<AccessRule> AccessRules => _accessRules.AsReadOnly();
 

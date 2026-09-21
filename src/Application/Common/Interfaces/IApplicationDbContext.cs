@@ -21,8 +21,6 @@ public interface IApplicationDbContext
     DbSet<UserCompany> UserCompanies { get; }
     DbSet<Role> Roles { get; }
     DbSet<UserRole> UserRoles { get; }
-    DbSet<RoleGroup> RoleGroups { get; }
-    DbSet<RoleGroupRole> RoleGroupRoles { get; }
     DbSet<AuthPrincipal> AuthPrincipals { get; }
     DbSet<CleanArchitecture.Domain.AccessControl.Application> Applications { get; }
     DbSet<Resource> Resources { get; }

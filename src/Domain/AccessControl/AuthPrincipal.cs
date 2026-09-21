@@ -30,13 +30,10 @@ public sealed class AuthPrincipal : BaseAuditableEntity<Guid>
     public static AuthPrincipal ForRole(Guid roleId, Guid companyId, Guid applicationId)
         => new(PrincipalType.Role, roleId, companyId, applicationId);
 
-    public static AuthPrincipal ForRoleGroup(Guid roleGroupId, Guid companyId, Guid applicationId)
-        => new(PrincipalType.RoleGroup, roleGroupId, companyId, applicationId);
-
     public void AddAccessRule(AccessRule rule)
     {
         _accessRules.Add(rule);
     }
 }
 
-public enum PrincipalType { UserCompany, Role, RoleGroup }
+public enum PrincipalType { UserCompany, Role }

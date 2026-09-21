@@ -28,8 +28,6 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<UserCompany> UserCompanies => Set<UserCompany>();
     public DbSet<Role> BusinessRoles => Set<Role>();
     public new DbSet<UserRole> UserRoles => Set<UserRole>();
-    public DbSet<RoleGroup> RoleGroups => Set<RoleGroup>();
-    public DbSet<RoleGroupRole> RoleGroupRoles => Set<RoleGroupRole>();
     public DbSet<AuthPrincipal> AuthPrincipals => Set<AuthPrincipal>();
     public DbSet<CleanArchitecture.Domain.AccessControl.Application> Applications => Set<CleanArchitecture.Domain.AccessControl.Application>();
     public DbSet<Resource> Resources => Set<Resource>();

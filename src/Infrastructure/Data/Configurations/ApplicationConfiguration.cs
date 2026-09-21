@@ -29,10 +29,5 @@ public class ApplicationConfiguration : IEntityTypeConfiguration<CleanArchitectu
             .WithOne()
             .HasForeignKey(r => r.ApplicationId)
             .OnDelete(DeleteBehavior.Cascade);
-
-        builder.HasMany(a => a.RoleGroups)
-            .WithOne()
-            .HasForeignKey(rg => rg.ApplicationId)
-            .OnDelete(DeleteBehavior.Cascade);
     }
 }

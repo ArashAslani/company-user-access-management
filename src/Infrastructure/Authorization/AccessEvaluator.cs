@@ -63,19 +63,9 @@ public class AccessEvaluator : IAccessEvaluator
             return new AccessDecision(true, "ALLOWED_ROLE", sources);
         }
 
-        // Check RoleGroup permissions
-        var roleGroupRules = await GetRoleGroupRules(userCompany, permission.Id, cancellationToken);
-        var allowedByRoleGroup = roleGroupRules.Any(r => r.Effect == AccessEffect.Allow && IsScopeMatch(r, request.ScopeType, request.ScopeKey));
-        if (allowedByRoleGroup)
-        {
-            sources.Add(new AccessSource("RoleGroup", userCompany.PrincipalId.ToString(), "All", []));
-            return new AccessDecision(true, "ALLOWED_ROLE_GROUP", sources);
-        }
-
         // Check Deny rules
         var hasDeny = directRules.Any(r => r.Effect == AccessEffect.Deny) ||
-                      roleRules.Any(r => r.Effect == AccessEffect.Deny) ||
-                      roleGroupRules.Any(r => r.Effect == AccessEffect.Deny);
+                      roleRules.Any(r => r.Effect == AccessEffect.Deny);
 
         if (hasDeny)
         {
@@ -108,28 +98,6 @@ public class AccessEvaluator : IAccessEvaluator
 
         var principalIds = await _context.AuthPrincipals
             .Where(ap => ap.Type == PrincipalType.Role && roleIds.Contains(ap.ReferenceId) && ap.CompanyId == userCompany.CompanyId)
-            .Select(ap => ap.Id)
-            .ToListAsync(cancellationToken);
-
-        return await _context.AccessRules
-            .Where(ar => principalIds.Contains(ar.PrincipalId) && ar.PermissionId == permissionId && ar.Status == AccessRuleStatus.Active)
-            .ToListAsync(cancellationToken);
-    }
-
-    private async Task<List<AccessRule>> GetRoleGroupRules(UserCompany userCompany, Guid permissionId, CancellationToken cancellationToken)
-    {
-        var roleIds = userCompany.Roles.Select(r => r.RoleId).ToList();
-        if (!roleIds.Any()) return [];
-
-        var roleGroupIds = await _context.RoleGroupRoles
-            .Where(rgr => roleIds.Contains(rgr.RoleId))
-            .Select(rgr => rgr.RoleGroupId)
-            .ToListAsync(cancellationToken);
-
-        if (!roleGroupIds.Any()) return [];
-
-        var principalIds = await _context.AuthPrincipals
-            .Where(ap => ap.Type == PrincipalType.RoleGroup && roleGroupIds.Contains(ap.ReferenceId) && ap.CompanyId == userCompany.CompanyId)
             .Select(ap => ap.Id)
             .ToListAsync(cancellationToken);
 

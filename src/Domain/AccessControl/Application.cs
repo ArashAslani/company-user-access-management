@@ -17,9 +17,6 @@ public sealed class Application : BaseAuditableEntity<Guid>
     private readonly List<Role> _roles = [];
     public IReadOnlyCollection<Role> Roles => _roles.AsReadOnly();
 
-    private readonly List<RoleGroup> _roleGroups = [];
-    public IReadOnlyCollection<RoleGroup> RoleGroups => _roleGroups.AsReadOnly();
-
     private Application() { }
 
     public Application(string code, string name, string? description = null)
