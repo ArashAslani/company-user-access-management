@@ -148,6 +148,33 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
     }
 
     public PersonnelSignature? GetCurrentSignature() => _signatures.FirstOrDefault(s => s.IsCurrent);
+
+    public bool CanDelete()
+    {
+        return !_positions.Any(p => p.IsCurrentlyEffective());
+    }
+
+    public void ConfirmEmployment()
+    {
+        if (Status != PersonnelStatus.Draft)
+            throw new InvalidOperationException("Only Draft personnel can confirm employment.");
+
+        if (!_positions.Any(p => p.IsCurrentlyEffective()))
+            throw new InvalidOperationException("Cannot confirm employment: no effective position assigned.");
+
+        Status = PersonnelStatus.Employed;
+    }
+
+    public void RevertToDraft()
+    {
+        if (Status != PersonnelStatus.Employed)
+            throw new InvalidOperationException("Only Employed personnel can revert to draft.");
+
+        if (_positions.Any(p => p.IsCurrentlyEffective()))
+            throw new InvalidOperationException("Cannot revert to draft: has effective position assignments.");
+
+        Status = PersonnelStatus.Draft;
+    }
 }
 
 public enum Gender { Male, Female }
