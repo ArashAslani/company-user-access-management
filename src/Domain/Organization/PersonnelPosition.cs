@@ -8,21 +8,25 @@ public sealed class PersonnelPosition : BaseEntity
     public Guid PositionId { get; private set; }
     public bool IsPrimary { get; private set; }
     public PersonnelPositionStatus Status { get; private set; }
-    public DateTime AssignedAt { get; private set; }
-    public DateTime? EndedAt { get; private set; }
+    public DateTime EffectiveFrom { get; private set; }
+    public DateTime? EffectiveTo { get; private set; }
+    public DateTime CreatedAt { get; private set; }
+    public DateTime? DeactivatedAt { get; private set; }
 
     public Personnel? Personnel { get; private set; }
     public Position? Position { get; private set; }
 
     private PersonnelPosition() { }
 
-    public PersonnelPosition(Guid personnelId, Guid positionId, bool isPrimary, DateTime assignedAt)
+    public PersonnelPosition(Guid personnelId, Guid positionId, bool isPrimary, DateTime effectiveFrom, DateTime? effectiveTo = null)
     {
         PersonnelId = personnelId;
         PositionId = positionId;
         IsPrimary = isPrimary;
         Status = PersonnelPositionStatus.Active;
-        AssignedAt = assignedAt;
+        EffectiveFrom = effectiveFrom;
+        EffectiveTo = effectiveTo;
+        CreatedAt = DateTime.UtcNow;
     }
 
     public void SetPrimary(bool isPrimary)
@@ -30,18 +34,35 @@ public sealed class PersonnelPosition : BaseEntity
         IsPrimary = isPrimary;
     }
 
-    public void End(DateTime endedAt)
+    public void SetStatus(PersonnelPositionStatus status, DateTime? deactivatedAt = null)
     {
-        Status = PersonnelPositionStatus.Inactive;
-        EndedAt = endedAt;
-        IsPrimary = false;
+        Status = status;
+        if (status == PersonnelPositionStatus.Inactive && deactivatedAt.HasValue)
+        {
+            DeactivatedAt = deactivatedAt;
+        }
     }
 
-    public void Reactivate(DateTime assignedAt)
+    public void UpdateEffectiveWindow(DateTime effectiveFrom, DateTime? effectiveTo)
     {
-        Status = PersonnelPositionStatus.Active;
-        EndedAt = null;
-        AssignedAt = assignedAt;
+        EffectiveFrom = effectiveFrom;
+        EffectiveTo = effectiveTo;
+    }
+
+    public bool IsCurrentlyEffective(DateTime? at = null)
+    {
+        var now = at ?? DateTime.UtcNow;
+        return Status == PersonnelPositionStatus.Active
+            && EffectiveFrom <= now
+            && (EffectiveTo == null || EffectiveTo > now);
+    }
+
+    public bool HasOverlap(DateTime otherEffectiveFrom, DateTime? otherEffectiveTo)
+    {
+        var otherEnd = otherEffectiveTo ?? DateTime.MaxValue;
+        var thisEnd = EffectiveTo ?? DateTime.MaxValue;
+
+        return EffectiveFrom < otherEnd && otherEffectiveFrom < thisEnd;
     }
 }
 

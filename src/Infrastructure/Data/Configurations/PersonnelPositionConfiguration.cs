@@ -14,11 +14,14 @@ public class PersonnelPositionConfiguration : IEntityTypeConfiguration<Personnel
 
         builder.Property(pp => pp.IsPrimary).IsRequired();
         builder.Property(pp => pp.Status).IsRequired().HasConversion<int>();
-        builder.Property(pp => pp.AssignedAt).IsRequired();
-        builder.Property(pp => pp.EndedAt);
+        builder.Property(pp => pp.EffectiveFrom).IsRequired();
+        builder.Property(pp => pp.EffectiveTo);
+        builder.Property(pp => pp.CreatedAt).IsRequired();
+        builder.Property(pp => pp.DeactivatedAt);
 
         builder.HasIndex(pp => new { pp.PersonnelId, pp.Status });
         builder.HasIndex(pp => new { pp.PositionId, pp.Status });
+        builder.HasIndex(pp => new { pp.PersonnelId, pp.EffectiveFrom, pp.EffectiveTo });
 
         builder.HasOne(pp => pp.Personnel)
             .WithMany(p => p.Positions)
