@@ -3,6 +3,7 @@ using CompanyAccessManagement.Domain.Constants;
 using CompanyAccessManagement.Infrastructure.Identity;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -40,8 +41,8 @@ public class ApplicationDbContextInitialiser
     {
         try
         {
-            await _context.Database.EnsureDeletedAsync();
-            await _context.Database.EnsureCreatedAsync();
+            // Use migrations instead of EnsureDeleted/EnsureCreated
+            await _context.Database.MigrateAsync();
         }
         catch (Exception ex)
         {
