@@ -2,6 +2,7 @@ using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Models;
 using CompanyAccessManagement.Application.Organization.Personnel.Queries;
 using CompanyAccessManagement.Application.Organization.Personnel.Commands;
+using CompanyAccessManagement.Application.Organization.Personnel.Commands.Signatures;
 using CompanyAccessManagement.Web.Authorization;
 using CompanyAccessManagement.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
@@ -74,13 +75,13 @@ public sealed class PersonnelEndpoints : IEndpointGroup
         .ProducesProblem(StatusCodes.Status409Conflict);
 
         // 2.4 Update position assignment
-        group.MapPut("/{personnelId:guid}/positions/{personnelPositionId:guid}", async (
+        group.MapPut("/{personnelId:guid}/positions/{positionId:guid}", async (
             Guid personnelId,
-            Guid personnelPositionId,
+            Guid positionId,
             UpdatePositionAssignmentCommand command,
             ISender sender) =>
         {
-            await sender.Send(command with { PersonnelId = personnelId, PersonnelPositionId = personnelPositionId });
+            await sender.Send(command with { PersonnelId = personnelId, PositionId = positionId });
             return Results.Ok();
         })
         .RequirePermission("PersonnelPosition.Edit")
@@ -91,12 +92,12 @@ public sealed class PersonnelEndpoints : IEndpointGroup
         .ProducesProblem(StatusCodes.Status404NotFound);
 
         // 2.5 Remove position assignment
-        group.MapDelete("/{personnelId:guid}/positions/{personnelPositionId:guid}", async (
+        group.MapDelete("/{personnelId:guid}/positions/{positionId:guid}", async (
             Guid personnelId,
-            Guid personnelPositionId,
+            Guid positionId,
             ISender sender) =>
         {
-            await sender.Send(new RemovePositionAssignmentCommand { PersonnelId = personnelId, PersonnelPositionId = personnelPositionId });
+            await sender.Send(new RemovePositionAssignmentCommand { PersonnelId = personnelId, PositionId = positionId });
             return Results.NoContent();
         })
         .RequirePermission("PersonnelPosition.Delete")
@@ -110,14 +111,25 @@ public sealed class PersonnelEndpoints : IEndpointGroup
             IFormFile file,
             ISender sender) =>
         {
-            // In a real implementation, we'd handle multipart form data
-            // For now, return not implemented
-            return Results.Problem("Not implemented", statusCode: StatusCodes.Status501NotImplemented);
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms);
+            var content = ms.ToArray();
+
+            var command = new UploadSignatureCommand
+            {
+                PersonnelId = id,
+                FileName = file.FileName,
+                ContentType = file.ContentType,
+                Content = content
+            };
+            var signatureId = await sender.Send(command);
+            return Results.Created($"/api/v1/organization/personnel/{id}/signature/{signatureId}", new { id = signatureId });
         })
         .RequirePermission("PersonnelSignature.Create")
         .WithName("UploadSignature")
         .Produces<Guid>(StatusCodes.Status201Created)
-        .ProducesProblem(StatusCodes.Status400BadRequest);
+        .ProducesProblem(StatusCodes.Status400BadRequest)
+        .DisableAntiforgery();
 
         // 2.8 Get personnel details
         group.MapGet("/{id:guid}", async (

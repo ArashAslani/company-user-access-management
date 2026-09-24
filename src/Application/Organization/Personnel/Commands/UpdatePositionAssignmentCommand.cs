@@ -8,7 +8,7 @@ namespace CompanyAccessManagement.Application.Organization.Personnel.Commands;
 public record UpdatePositionAssignmentCommand : IRequest
 {
     public Guid PersonnelId { get; set; }
-    public Guid PersonnelPositionId { get; init; }
+    public Guid PositionId { get; init; }
     public bool IsPrimary { get; init; }
     public DateTime EffectiveFrom { get; init; }
     public DateTime? EffectiveTo { get; init; }
@@ -33,11 +33,12 @@ public class UpdatePositionAssignmentCommandHandler : IRequestHandler<UpdatePosi
         if (personnel == null)
             throw new InvalidOperationException("Personnel not found.");
 
-        var assignment = personnel.Positions.FirstOrDefault(p => p.PositionId == request.PersonnelPositionId);
+        // Find the assignment by PersonnelId + PositionId (composite key)
+        var assignment = personnel.Positions.FirstOrDefault(p => p.PositionId == request.PositionId);
         if (assignment == null)
             throw new InvalidOperationException("Position assignment not found.");
 
-        // Check for overlap
+        // Check for overlap with other assignments for the same position
         if (personnel.Positions.Any(p => p.PositionId == assignment.PositionId && p.PersonnelId != assignment.PersonnelId && p.HasOverlap(request.EffectiveFrom, request.EffectiveTo)))
             throw new InvalidOperationException("Effective window overlaps with existing assignment for this position.");
 
@@ -52,8 +53,8 @@ public class UpdatePositionAssignmentCommandHandler : IRequestHandler<UpdatePosi
         if (now > (assignment.EffectiveTo ?? DateTime.MaxValue))
             throw new InvalidOperationException("SEALED_RECORD");
 
-        personnel.UpdatePositionEffectiveWindow(request.PersonnelPositionId, request.EffectiveFrom, request.EffectiveTo);
-        
+        personnel.UpdatePositionEffectiveWindow(request.PositionId, request.EffectiveFrom, request.EffectiveTo);
+
         if (request.IsPrimary != assignment.IsPrimary)
             personnel.SetPrimaryPosition(assignment.PositionId);
 

@@ -16,6 +16,11 @@ public class AccessEvaluator : IAccessEvaluator
 
     public async Task<AccessDecision> EvaluateAsync(AccessRequest request, CancellationToken cancellationToken = default)
     {
+        // 0. Check Global Super Admin FIRST (before membership check)
+        var globalSuperAdminDecision = await CheckGlobalSuperAdminAsync(request, cancellationToken);
+        if (globalSuperAdminDecision != null)
+            return globalSuperAdminDecision;
+
         // 1. Validate UserCompany membership
         var userCompany = await _context.UserCompanies
             .Include(uc => uc.Roles)
@@ -46,10 +51,10 @@ public class AccessEvaluator : IAccessEvaluator
             return new AccessDecision(false, "DENIED_PERMISSION_NOT_FOUND", []);
         }
 
-        // 4. Check Super Admin
-        var superAdminDecision = await CheckSuperAdminAsync(request, userCompany, cancellationToken);
-        if (superAdminDecision != null)
-            return superAdminDecision;
+        // 4. Check Company Super Admin
+        var companySuperAdminDecision = await CheckCompanySuperAdminAsync(request, userCompany, cancellationToken);
+        if (companySuperAdminDecision != null)
+            return companySuperAdminDecision;
 
         // 5. Build all applicable AccessRules for this user/permission
         var allRules = await GetAllApplicableRulesAsync(userCompany, permission.Id, cancellationToken);
@@ -69,28 +74,31 @@ public class AccessEvaluator : IAccessEvaluator
         }
     }
 
-    private async Task<AccessDecision?> CheckSuperAdminAsync(AccessRequest request, UserCompany userCompany, CancellationToken cancellationToken)
+    private async Task<AccessDecision?> CheckGlobalSuperAdminAsync(AccessRequest request, CancellationToken cancellationToken)
     {
-        // Check Global Super Admin (only in root company)
         var globalSuperAdminRole = await _context.Roles
             .Where(r => r.Kind == RoleKind.GlobalSuperAdmin && r.Status == RoleStatus.Active)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (globalSuperAdminRole != null)
-        {
-            var globalPrincipalIds = await _context.AuthPrincipals
-                .Where(ap => ap.Type == PrincipalType.Role && ap.ReferenceId == globalSuperAdminRole.Id && ap.CompanyId == userCompany.CompanyId)
-                .Select(ap => ap.Id)
-                .ToListAsync(cancellationToken);
+        if (globalSuperAdminRole == null)
+            return null;
 
-            var hasGlobal = globalPrincipalIds.Any(pid => userCompany.Roles.Any(r => r.RoleId == globalSuperAdminRole.Id));
-            if (hasGlobal)
-            {
-                return new AccessDecision(true, "ALLOWED_GLOBAL_SUPER_ADMIN", [new AccessSource("GlobalSuperAdmin", globalSuperAdminRole.Id.ToString(), "All", [])]);
-            }
+        // Check if user has Global Super Admin role in ANY company
+        var userHasGlobalRole = await _context.UserCompanies
+            .Where(uc => uc.UserId == request.UserId && uc.Status == UserCompanyStatus.Active)
+            .SelectMany(uc => uc.Roles)
+            .AnyAsync(r => r.RoleId == globalSuperAdminRole.Id, cancellationToken);
+
+        if (userHasGlobalRole)
+        {
+            return new AccessDecision(true, "ALLOWED_GLOBAL_SUPER_ADMIN", [new AccessSource("GlobalSuperAdmin", globalSuperAdminRole.Id.ToString(), "All", [])]);
         }
 
-        // Check Company Super Admin
+        return null;
+    }
+
+    private async Task<AccessDecision?> CheckCompanySuperAdminAsync(AccessRequest request, UserCompany userCompany, CancellationToken cancellationToken)
+    {
         var companySuperAdminRole = await _context.Roles
             .Where(r => r.Kind == RoleKind.CompanySuperAdmin && r.CompanyId == request.CompanyId && r.Status == RoleStatus.Active)
             .FirstOrDefaultAsync(cancellationToken);
@@ -220,17 +228,83 @@ public class AccessEvaluator : IAccessEvaluator
 
     private async Task<List<AccessRule>> GetDelegationRulesAsync(Guid principalId, Guid permissionId, CancellationToken cancellationToken)
     {
-        return await _context.AccessRules
-            .Where(ar => ar.DelegatedFromUserId != null && ar.DelegatedFromUserId == _context.UserCompanies
-                    .Where(uc => uc.PrincipalId == principalId)
-                    .Select(uc => uc.UserId)
-                    .FirstOrDefault()
+        // Find delegations TO this principal (delegatee)
+        var delegations = await _context.AccessRules
+            .Where(ar => ar.PrincipalId == principalId
                 && ar.PermissionId == permissionId
                 && ar.Status == AccessRuleStatus.Active
                 && ar.Origin == AccessRuleOrigin.Delegated
                 && (ar.ValidUntil == null || ar.ValidUntil > DateTime.UtcNow))
             .Include(ar => ar.Scopes)
             .ToListAsync(cancellationToken);
+
+        // Additional in-memory filter for expiration (InMemory DB safety)
+        var validDelegations = delegations
+            .Where(d => d.ValidUntil == null || d.ValidUntil > DateTime.UtcNow)
+            .ToList();
+
+        // Verify delegator still has the permission
+        var validDelegationsFinal = new List<AccessRule>();
+        foreach (var delegation in validDelegations)
+        {
+            if (delegation.DelegatedFromUserId == null)
+                continue;
+
+            var delegatorUserCompany = await _context.UserCompanies
+                .Where(uc => uc.UserId == delegation.DelegatedFromUserId && uc.Status == UserCompanyStatus.Active)
+                .Include(uc => uc.Roles)
+                .FirstOrDefaultAsync();
+
+            if (delegatorUserCompany == null)
+                continue;
+
+            // Check if delegator still has the permission (direct check, no recursion)
+            var delegatorHasPermission = await CheckUserHasPermissionDirect(delegatorUserCompany, permissionId, cancellationToken);
+
+            if (delegatorHasPermission)
+            {
+                validDelegationsFinal.Add(delegation);
+            }
+        }
+
+        return validDelegationsFinal;
+    }
+
+    private async Task<bool> CheckUserHasPermissionDirect(UserCompany userCompany, Guid permissionId, CancellationToken cancellationToken)
+    {
+        // Check direct user rules
+        var directRules = await _context.AccessRules
+            .Where(ar => ar.PrincipalId == userCompany.PrincipalId && ar.PermissionId == permissionId && ar.Effect == AccessEffect.Allow && ar.Status == AccessRuleStatus.Active)
+            .ToListAsync(cancellationToken);
+        if (directRules.Any()) return true;
+
+        // Check role rules (simplified - no delegation check to avoid recursion)
+        var roleIds = userCompany.Roles.Select(r => r.RoleId).ToList();
+        if (!roleIds.Any()) return false;
+
+        var allRelevantRoleIds = new HashSet<Guid>(roleIds);
+        foreach (var roleId in roleIds)
+        {
+            var ancestors = await GetAncestorRoleIdsAsync(roleId, cancellationToken);
+            foreach (var a in ancestors) allRelevantRoleIds.Add(a);
+        }
+
+        foreach (var roleId in roleIds)
+        {
+            var descendants = await GetDescendantRoleIdsAsync(roleId, cancellationToken);
+            foreach (var d in descendants) allRelevantRoleIds.Add(d);
+        }
+
+        var principalIds = await _context.AuthPrincipals
+            .Where(ap => ap.Type == PrincipalType.Role && allRelevantRoleIds.Contains(ap.ReferenceId) && ap.CompanyId == userCompany.CompanyId)
+            .Select(ap => ap.Id)
+            .ToListAsync();
+
+        var roleRules = await _context.AccessRules
+            .Where(ar => principalIds.Contains(ar.PrincipalId) && ar.PermissionId == permissionId && ar.Effect == AccessEffect.Allow && ar.Status == AccessRuleStatus.Active)
+            .ToListAsync(cancellationToken);
+
+        return roleRules.Any();
     }
 
     private async Task<AccessDecision> EvaluateRules(AccessRequest request, Permission permission, List<AccessRule> allRules, UserCompany userCompany)
@@ -241,7 +315,8 @@ public class AccessEvaluator : IAccessEvaluator
         var allowRules = allRules.Where(r => r.Effect == AccessEffect.Allow).ToList();
         var denyRules = allRules.Where(r => r.Effect == AccessEffect.Deny).ToList();
 
-        // Check DENY first (DENY boundary)
+        // For branch-local DENY: group deny rules by their role branch
+        // For now, use scope-matched DENY check
         var denyResult = CheckDenyBoundary(request, permission, denyRules, userCompany);
         if (denyResult != null)
             return denyResult;
@@ -271,7 +346,8 @@ public class AccessEvaluator : IAccessEvaluator
 
     private AccessDecision? CheckDenyBoundary(AccessRequest request, Permission permission, List<AccessRule> denyRules, UserCompany userCompany)
     {
-        // DENY on this permission in same branch/scope
+        // For branch-local DENY: check if there's a DENY on the specific branch for this scope
+        // For now, use scope-matched DENY check
         var relevantDenies = denyRules.Where(r => IsScopeMatch(r, request.ScopeType, request.ScopeKey)).ToList();
 
         if (relevantDenies.Any())
@@ -279,14 +355,10 @@ public class AccessEvaluator : IAccessEvaluator
             return new AccessDecision(false, "DENIED_EXPLICIT_DENY", [new AccessSource("Deny", "explicit", "All", [])]);
         }
 
-        // Check DENY on ancestor roles (Role Down boundary)
-        // If any ancestor role in the user's role hierarchy has DENY on this permission
-        // This is handled by GetRoleHierarchyRulesAsync including descendants
-
         return null;
     }
 
-private async Task<AccessDecision?> CheckPrerequisiteGates(AccessRequest request, Permission permission, List<AccessRule> allowRules, List<AccessRule> denyRules, UserCompany userCompany)
+    private async Task<AccessDecision?> CheckPrerequisiteGates(AccessRequest request, Permission permission, List<AccessRule> allowRules, List<AccessRule> denyRules, UserCompany userCompany)
     {
         // Get all prerequisite permissions (transitive)
         var prerequisites = GetPrerequisitePermissions(permission.Id);

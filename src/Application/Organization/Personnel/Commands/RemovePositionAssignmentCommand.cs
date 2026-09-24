@@ -8,7 +8,7 @@ namespace CompanyAccessManagement.Application.Organization.Personnel.Commands;
 public record RemovePositionAssignmentCommand : IRequest
 {
     public Guid PersonnelId { get; init; }
-    public Guid PersonnelPositionId { get; init; }
+    public Guid PositionId { get; init; }
 }
 
 public class RemovePositionAssignmentCommandHandler : IRequestHandler<RemovePositionAssignmentCommand>
@@ -29,7 +29,8 @@ public class RemovePositionAssignmentCommandHandler : IRequestHandler<RemovePosi
         if (personnel == null)
             throw new InvalidOperationException("Personnel not found.");
 
-        var assignment = personnel.Positions.FirstOrDefault(p => p.PositionId == request.PersonnelPositionId);
+        // Find the assignment by PersonnelId + PositionId (composite key)
+        var assignment = personnel.Positions.FirstOrDefault(p => p.PositionId == request.PositionId);
         if (assignment == null)
             throw new InvalidOperationException("Position assignment not found.");
 
