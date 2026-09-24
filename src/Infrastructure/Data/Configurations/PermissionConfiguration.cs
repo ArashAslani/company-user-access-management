@@ -23,8 +23,8 @@ public class PermissionConfiguration : IEntityTypeConfiguration<Permission>
             .HasForeignKey(p => p.ResourceId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasMany(p => p.AccessRules)
-            .WithOne()
+builder.HasMany(p => p.AccessRules)
+            .WithOne(ar => ar.Permission)
             .HasForeignKey(ar => ar.PermissionId)
             .OnDelete(DeleteBehavior.Cascade);
 

@@ -33,8 +33,8 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
             .HasForeignKey(ur => ur.RoleId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasMany(r => r.AccessRules)
-            .WithOne()
+builder.HasMany(r => r.AccessRules)
+            .WithOne(ar => ar.AuthorityRole)
             .HasForeignKey(ar => ar.AuthorityRoleId)
             .OnDelete(DeleteBehavior.SetNull);
     }

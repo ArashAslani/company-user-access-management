@@ -9,6 +9,7 @@ public sealed class AccessRule : BaseAuditableEntity<Guid>
     public Guid PermissionId { get; private set; }
     public Guid? AuthorityRoleId { get; private set; }
     public Guid? DelegatedFromUserId { get; private set; }
+    public Guid? BranchRootId { get; private set; }
     public AccessEffect Effect { get; private set; }
     public AccessRuleOrigin Origin { get; private set; }
     public ScopeMode ScopeMode { get; private set; }
@@ -25,7 +26,7 @@ public sealed class AccessRule : BaseAuditableEntity<Guid>
 
     private AccessRule() { }
 
-    public AccessRule(Guid principalId, Guid permissionId, AccessEffect effect, AccessRuleOrigin origin = AccessRuleOrigin.Manual, ScopeMode scopeMode = ScopeMode.None, DateTime? validFrom = null, DateTime? validUntil = null, Guid? authorityRoleId = null, Guid? delegatedFromUserId = null)
+    public AccessRule(Guid principalId, Guid permissionId, AccessEffect effect, AccessRuleOrigin origin = AccessRuleOrigin.Manual, ScopeMode scopeMode = ScopeMode.None, DateTime? validFrom = null, DateTime? validUntil = null, Guid? authorityRoleId = null, Guid? delegatedFromUserId = null, Guid? branchRootId = null)
     {
         Id = Guid.NewGuid();
         PrincipalId = principalId;
@@ -37,7 +38,13 @@ public sealed class AccessRule : BaseAuditableEntity<Guid>
         ValidUntil = validUntil;
         AuthorityRoleId = authorityRoleId;
         DelegatedFromUserId = delegatedFromUserId;
+        BranchRootId = branchRootId;
         Status = AccessRuleStatus.Active;
+    }
+
+    public void SetBranchRoot(Guid branchRootId)
+    {
+        BranchRootId = branchRootId;
     }
 
     public void AddScope(string scopeType, string scopeKey)

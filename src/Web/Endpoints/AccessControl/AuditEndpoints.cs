@@ -44,7 +44,7 @@ public sealed class AuditEndpoints : IEndpointGroup
             var result = await sender.Send(query);
             return Results.Ok(result);
         })
-        .RequirePermission("AuditLog.Read")
+        .RequirePermission("AccessManagement.AuditLog.Read")
         .WithName("GetAccessHistory")
         .Produces<PaginatedList<AuditLogDto>>(StatusCodes.Status200OK);
 
@@ -56,7 +56,7 @@ public sealed class AuditEndpoints : IEndpointGroup
             var result = await sender.Send(new GetAccessHistoryDetailQuery { OperationId = operationId });
             return result is not null ? Results.Ok(result) : Results.NotFound();
         })
-        .RequirePermission("AuditLog.Read")
+        .RequirePermission("AccessManagement.AuditLog.Read")
         .WithName("GetAccessHistoryDetail")
         .Produces<AuditLogDetailDto>(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status404NotFound);
@@ -89,7 +89,7 @@ public sealed class AuditEndpoints : IEndpointGroup
             var fileName = $"access-history-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}.{(format == "xlsx" ? "xlsx" : "pdf")}";
             return Results.File(fileBytes, contentType, fileName);
         })
-        .RequirePermission("AuditLog.Export")
+        .RequirePermission("AccessManagement.AuditLog.Export")
         .WithName("ExportAccessHistory")
         .Produces<byte[]>(StatusCodes.Status200OK);
     }

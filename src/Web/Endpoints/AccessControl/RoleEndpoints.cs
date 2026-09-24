@@ -40,7 +40,7 @@ public sealed class RoleEndpoints : IEndpointGroup
             var result = await sender.Send(query);
             return Results.Ok(result);
         })
-        .RequirePermission("Role.Read")
+        .RequirePermission("AccessManagement.Role.Read")
         .WithName("GetRoles")
         .Produces<PaginatedList<RoleDto>>(StatusCodes.Status200OK);
 
@@ -52,7 +52,7 @@ public sealed class RoleEndpoints : IEndpointGroup
             var id = await sender.Send(command);
             return Results.Created($"/api/v1/access-control/roles/{id}", new { id });
         })
-        .RequirePermission("Role.Create")
+        .RequirePermission("AccessManagement.Role.Create")
         .WithName("CreateRole")
         .Produces<Guid>(StatusCodes.Status201Created)
         .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -67,7 +67,7 @@ public sealed class RoleEndpoints : IEndpointGroup
             await sender.Send(command with { Id = id });
             return Results.Ok();
         })
-        .RequirePermission("Role.Edit")
+        .RequirePermission("AccessManagement.Role.Edit")
         .WithName("UpdateRole")
         .Produces(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -81,7 +81,7 @@ public sealed class RoleEndpoints : IEndpointGroup
             var result = await sender.Send(new GetRoleQuery { Id = id });
             return result is not null ? Results.Ok(result) : Results.NotFound();
         })
-        .RequirePermission("Role.Read")
+        .RequirePermission("AccessManagement.Role.Read")
         .WithName("GetRole")
         .Produces<RoleDetailDto>(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status404NotFound);
@@ -94,7 +94,7 @@ public sealed class RoleEndpoints : IEndpointGroup
             await sender.Send(new DeleteRoleCommand { Id = id });
             return Results.NoContent();
         })
-        .RequirePermission("Role.Delete")
+        .RequirePermission("AccessManagement.Role.Delete")
         .WithName("DeleteRole")
         .Produces(StatusCodes.Status204NoContent)
         .ProducesProblem(StatusCodes.Status404NotFound)
@@ -108,7 +108,7 @@ public sealed class RoleEndpoints : IEndpointGroup
             var result = await sender.Send(new GetRoleTreeQuery { HoldingId = holdingId });
             return Results.Ok(result);
         })
-        .RequirePermission("Role.Read")
+        .RequirePermission("AccessManagement.Role.Read")
         .WithName("GetRoleTree")
         .Produces<RoleTreeDto>(StatusCodes.Status200OK);
 
@@ -121,7 +121,7 @@ public sealed class RoleEndpoints : IEndpointGroup
             await sender.Send(command with { RoleId = id });
             return Results.Ok();
         })
-        .RequirePermission("Role.Permissions.Manage")
+        .RequirePermission("AccessManagement.Role.Permissions.Manage")
         .WithName("UpdateRolePermissions")
         .Produces(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -136,7 +136,7 @@ public sealed class RoleEndpoints : IEndpointGroup
             await sender.Send(command with { SourceRoleId = id });
             return Results.Ok();
         })
-        .RequirePermission("Role.Permissions.Manage")
+        .RequirePermission("AccessManagement.Role.Permissions.Manage")
         .WithName("CopyRolePermissions")
         .Produces(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -150,7 +150,7 @@ public sealed class RoleEndpoints : IEndpointGroup
             var result = await sender.Send(command);
             return Results.Ok(result);
         })
-        .RequirePermission("Role.BulkAssign")
+        .RequirePermission("AccessManagement.Role.BulkAssign")
         .WithName("BulkAssignRole")
         .Produces<BulkAssignRoleResult>(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status400BadRequest)

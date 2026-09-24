@@ -23,7 +23,7 @@ public sealed class ScopeEndpoints : IEndpointGroup
             var result = await sender.Send(new GetWorkshopsQuery { CompanyId = companyId });
             return Results.Ok(result);
         })
-        .RequirePermission("RuleScope.Read")
+        .RequirePermission("AccessManagement.RuleScope.Read")
         .WithName("GetWorkshops")
         .Produces<List<WorkshopDto>>(StatusCodes.Status200OK);
 
@@ -35,7 +35,7 @@ public sealed class ScopeEndpoints : IEndpointGroup
             var result = await sender.Send(new GetResourceTreeQuery { ApplicationId = applicationId });
             return Results.Ok(result);
         })
-        .RequirePermission("Resource.Read")
+        .RequirePermission("AccessManagement.Resource.Read")
         .WithName("GetResourceTree")
         .Produces<List<ScopeResourceTreeDto>>(StatusCodes.Status200OK);
     }

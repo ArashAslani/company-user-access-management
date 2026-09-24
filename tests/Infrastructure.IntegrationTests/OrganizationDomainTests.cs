@@ -69,7 +69,8 @@ public class OrganizationDomainTests : TestBase
 
         // Cross-company parent validation is performed at application service layer
         // Domain entity allows creation; validation enforced at application service layer
-        var child = new Position(_companyId, "DEV", "Developer", "Software Developer", parent.Id);
+        // Use a different code than the one created in SetUp ("DEV")
+        var child = new Position(_companyId, "DEV2", "Developer", "Software Developer", parent.Id);
         Context.Positions.Add(child);
         await Context.SaveChangesAsync(default);
 
@@ -121,14 +122,13 @@ public class OrganizationDomainTests : TestBase
         var pos2 = new Position(_companyId, "DUP", "Position 2", "Second");
         Context.Positions.Add(pos2);
 
-        // InMemory database may not enforce unique constraints
-        // This test documents the expected behavior for real databases
-        await Context.SaveChangesAsync(default);
+        // SQLite enforces unique constraints, so this should throw
+        var ex = Assert.ThrowsAsync<Microsoft.EntityFrameworkCore.DbUpdateException>(async () =>
+            await Context.SaveChangesAsync(default));
 
-        // In a real database with unique constraint, this would throw
-        // For InMemory, we just verify both positions exist
-        var positions = await Context.Positions.Where(p => p.Code == "DUP").ToListAsync();
-        Assert.That(positions.Count, Is.EqualTo(2));
+        Assert.That(ex.InnerException, Is.InstanceOf<Microsoft.Data.Sqlite.SqliteException>());
+        var sqliteEx = (Microsoft.Data.Sqlite.SqliteException)ex.InnerException!;
+        Assert.That(sqliteEx.SqliteErrorCode, Is.EqualTo(19)); // UNIQUE constraint failed
     }
 
     [Test]

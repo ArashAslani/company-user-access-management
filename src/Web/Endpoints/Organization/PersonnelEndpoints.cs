@@ -41,7 +41,7 @@ public sealed class PersonnelEndpoints : IEndpointGroup
             var result = await sender.Send(query);
             return Results.Ok(result);
         })
-        .RequirePermission("Personnel.Read")
+        .RequirePermission("Organization.Personnel.Read")
         .WithName("GetPersonnel")
         .Produces<PaginatedList<PersonnelDto>>(StatusCodes.Status200OK);
 
@@ -53,7 +53,7 @@ public sealed class PersonnelEndpoints : IEndpointGroup
             var id = await sender.Send(command);
             return Results.Created($"/api/v1/organization/personnel/{id}", new { id });
         })
-        .RequirePermission("Personnel.Create")
+        .RequirePermission("Organization.Personnel.Create")
         .WithName("CreatePersonnel")
         .Produces<Guid>(StatusCodes.Status201Created)
         .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -68,7 +68,7 @@ public sealed class PersonnelEndpoints : IEndpointGroup
             await sender.Send(command with { PersonnelId = id });
             return Results.Ok();
         })
-        .RequirePermission("PersonnelPosition.Create")
+        .RequirePermission("Organization.PersonnelPosition.Create")
         .WithName("AssignPosition")
         .Produces(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -84,7 +84,7 @@ public sealed class PersonnelEndpoints : IEndpointGroup
             await sender.Send(command with { PersonnelId = personnelId, PositionId = positionId });
             return Results.Ok();
         })
-        .RequirePermission("PersonnelPosition.Edit")
+        .RequirePermission("Organization.PersonnelPosition.Edit")
         .WithName("UpdatePositionAssignment")
         .Produces(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -100,7 +100,7 @@ public sealed class PersonnelEndpoints : IEndpointGroup
             await sender.Send(new RemovePositionAssignmentCommand { PersonnelId = personnelId, PositionId = positionId });
             return Results.NoContent();
         })
-        .RequirePermission("PersonnelPosition.Delete")
+        .RequirePermission("Organization.PersonnelPosition.Delete")
         .WithName("RemovePositionAssignment")
         .Produces(StatusCodes.Status204NoContent)
         .ProducesProblem(StatusCodes.Status404NotFound);
@@ -125,7 +125,7 @@ public sealed class PersonnelEndpoints : IEndpointGroup
             var signatureId = await sender.Send(command);
             return Results.Created($"/api/v1/organization/personnel/{id}/signature/{signatureId}", new { id = signatureId });
         })
-        .RequirePermission("PersonnelSignature.Create")
+        .RequirePermission("Organization.PersonnelSignature.Create")
         .WithName("UploadSignature")
         .Produces<Guid>(StatusCodes.Status201Created)
         .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -139,7 +139,7 @@ public sealed class PersonnelEndpoints : IEndpointGroup
             var result = await sender.Send(new GetPersonnelDetailQuery { Id = id });
             return result is not null ? Results.Ok(result) : Results.NotFound();
         })
-        .RequirePermission("Personnel.Read")
+        .RequirePermission("Organization.Personnel.Read")
         .WithName("GetPersonnelDetail")
         .Produces<PersonnelDetailDto>(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status404NotFound);
@@ -153,7 +153,7 @@ public sealed class PersonnelEndpoints : IEndpointGroup
             await sender.Send(command with { Id = id });
             return Results.Ok();
         })
-        .RequirePermission("Personnel.Edit")
+        .RequirePermission("Organization.Personnel.Edit")
         .WithName("UpdatePersonnel")
         .Produces(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -167,7 +167,7 @@ public sealed class PersonnelEndpoints : IEndpointGroup
             await sender.Send(new DeletePersonnelCommand { Id = id });
             return Results.NoContent();
         })
-        .RequirePermission("Personnel.Delete")
+        .RequirePermission("Organization.Personnel.Delete")
         .WithName("DeletePersonnel")
         .Produces(StatusCodes.Status204NoContent)
         .ProducesProblem(StatusCodes.Status404NotFound)

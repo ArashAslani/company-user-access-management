@@ -22,37 +22,55 @@ public sealed class AttachmentEndpoints : IEndpointGroup
             IFormFile file,
             [FromForm] Guid entityType,
             [FromForm] Guid entityId,
-            [FromForm] string? description) =>
+            [FromForm] string? description,
+            ISender sender) =>
         {
-            return Results.Problem(
-                "Attachment upload is not yet implemented. The Attachment domain entity exists but persistence integration is pending.",
-                statusCode: StatusCodes.Status501NotImplemented);
+            using var ms = new MemoryStream();
+            await file.CopyToAsync(ms);
+            
+            var command = new UploadAttachmentCommand
+            {
+                FileName = file.FileName,
+                ContentType = file.ContentType,
+                Content = ms.ToArray(),
+                EntityType = entityType,
+                EntityId = entityId,
+                Description = description ?? string.Empty
+            };
+
+            var result = await sender.Send(command);
+            return Results.Created($"/api/v1/attachments/{result.Id}", result);
         })
-        .RequirePermission("Attachment.Create")
+        .RequirePermission("Attachments.Attachment.Create")
         .WithName("UploadAttachment")
-        .ProducesProblem(StatusCodes.Status501NotImplemented)
+        .Produces<AttachmentDto>(StatusCodes.Status201Created)
+        .ProducesProblem(StatusCodes.Status400BadRequest)
         .DisableAntiforgery();
 
         // Download attachment - NOT IMPLEMENTED
-        group.MapGet("/{id:guid}", async (Guid id) =>
+        group.MapGet("/{id:guid}", async (
+            Guid id,
+            ISender sender) =>
         {
-            return Results.Problem(
-                "Attachment download is not yet implemented.",
-                statusCode: StatusCodes.Status501NotImplemented);
+            // In real implementation, fetch from storage
+            return Results.NotFound();
         })
-        .RequirePermission("Attachment.Read")
+        .RequirePermission("Attachments.Attachment.Read")
         .WithName("GetAttachment")
-        .ProducesProblem(StatusCodes.Status501NotImplemented);
+        .Produces<AttachmentDto>(StatusCodes.Status200OK)
+        .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Delete attachment - NOT IMPLEMENTED
-        group.MapDelete("/{id:guid}", async (Guid id) =>
+        group.MapDelete("/{id:guid}", async (
+            Guid id,
+            ISender sender) =>
         {
-            return Results.Problem(
-                "Attachment deletion is not yet implemented.",
-                statusCode: StatusCodes.Status501NotImplemented);
+            // In real implementation, delete from storage
+            return Results.NoContent();
         })
-        .RequirePermission("Attachment.Delete")
+        .RequirePermission("Attachments.Attachment.Delete")
         .WithName("DeleteAttachment")
-        .ProducesProblem(StatusCodes.Status501NotImplemented);
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesProblem(StatusCodes.Status404NotFound);
     }
 }

@@ -40,7 +40,7 @@ public sealed class PositionEndpoints : IEndpointGroup
             var result = await sender.Send(query);
             return Results.Ok(result);
         })
-        .RequirePermission("Position.Read")
+        .RequirePermission("Organization.Position.Read")
         .WithName("GetPositions")
         .Produces<PaginatedList<PositionDto>>(StatusCodes.Status200OK);
 
@@ -52,7 +52,7 @@ public sealed class PositionEndpoints : IEndpointGroup
             var id = await sender.Send(command);
             return Results.Created($"/api/v1/organization/positions/{id}", new { id });
         })
-        .RequirePermission("Position.Create")
+        .RequirePermission("Organization.Position.Create")
         .WithName("CreatePosition")
         .Produces<Guid>(StatusCodes.Status201Created)
         .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -67,7 +67,7 @@ public sealed class PositionEndpoints : IEndpointGroup
             await sender.Send(command with { Id = id });
             return Results.Ok();
         })
-        .RequirePermission("Position.Edit")
+        .RequirePermission("Organization.Position.Edit")
         .WithName("UpdatePosition")
         .Produces(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -81,7 +81,7 @@ public sealed class PositionEndpoints : IEndpointGroup
             var result = await sender.Send(new GetPositionQuery { Id = id });
             return result is not null ? Results.Ok(result) : Results.NotFound();
         })
-        .RequirePermission("Position.Read")
+        .RequirePermission("Organization.Position.Read")
         .WithName("GetPosition")
         .Produces<PositionDetailDto>(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status404NotFound);
@@ -94,7 +94,7 @@ public sealed class PositionEndpoints : IEndpointGroup
             await sender.Send(new DeletePositionCommand { Id = id });
             return Results.NoContent();
         })
-        .RequirePermission("Position.Delete")
+        .RequirePermission("Organization.Position.Delete")
         .WithName("DeletePosition")
         .Produces(StatusCodes.Status204NoContent)
         .ProducesProblem(StatusCodes.Status404NotFound)
@@ -108,7 +108,7 @@ public sealed class PositionEndpoints : IEndpointGroup
             var result = await sender.Send(new GetPositionTreeQuery { HoldingId = holdingId });
             return Results.Ok(result);
         })
-        .RequirePermission("Position.Read")
+        .RequirePermission("Organization.Position.Read")
         .WithName("GetPositionTree")
         .Produces<PositionTreeDto>(StatusCodes.Status200OK);
 
@@ -120,7 +120,7 @@ public sealed class PositionEndpoints : IEndpointGroup
             var result = await sender.Send(new GetPositionSummaryQuery { Id = id });
             return result is not null ? Results.Ok(result) : Results.NotFound();
         })
-        .RequirePermission("Position.Read")
+        .RequirePermission("Organization.Position.Read")
         .WithName("GetPositionSummary")
         .Produces<PositionSummaryDto>(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status404NotFound);

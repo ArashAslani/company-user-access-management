@@ -60,7 +60,7 @@ public class AccessEvaluator : IAccessEvaluator
         var allRules = await GetAllApplicableRulesAsync(userCompany, permission.Id, cancellationToken);
 
         // 6. Evaluate with full DENY boundary, Role Up/Down, Prerequisite Gates, Delegation
-        var decision = await EvaluateRules(request, permission, allRules, userCompany);
+        var decision = await EvaluateRules(request, permission, allRules, userCompany, cancellationToken);
 
         return decision;
     }
@@ -136,8 +136,13 @@ public class AccessEvaluator : IAccessEvaluator
 
     private async Task<List<AccessRule>> GetDirectUserRules(Guid principalId, Guid permissionId, CancellationToken cancellationToken)
     {
+        var now = DateTime.UtcNow;
         return await _context.AccessRules
-            .Where(ar => ar.PrincipalId == principalId && ar.PermissionId == permissionId && ar.Status == AccessRuleStatus.Active)
+            .Where(ar => ar.PrincipalId == principalId 
+                && ar.PermissionId == permissionId 
+                && ar.Status == AccessRuleStatus.Active
+                && (ar.ValidFrom == null || ar.ValidFrom <= now)
+                && (ar.ValidUntil == null || ar.ValidUntil > now))
             .Include(ar => ar.Scopes)
             .ToListAsync(cancellationToken);
     }
@@ -174,7 +179,9 @@ public class AccessEvaluator : IAccessEvaluator
 
         // Get all AccessRules for these principals
         var rules = await _context.AccessRules
-            .Where(ar => principalIds.Contains(ar.PrincipalId) && ar.PermissionId == permissionId && ar.Status == AccessRuleStatus.Active)
+            .Where(ar => principalIds.Contains(ar.PrincipalId) && ar.PermissionId == permissionId && ar.Status == AccessRuleStatus.Active
+                && (ar.ValidFrom == null || ar.ValidFrom <= DateTime.UtcNow)
+                && (ar.ValidUntil == null || ar.ValidUntil > DateTime.UtcNow))
             .Include(ar => ar.Scopes)
             .ToListAsync(cancellationToken);
 
@@ -234,13 +241,15 @@ public class AccessEvaluator : IAccessEvaluator
                 && ar.PermissionId == permissionId
                 && ar.Status == AccessRuleStatus.Active
                 && ar.Origin == AccessRuleOrigin.Delegated
-                && (ar.ValidUntil == null || ar.ValidUntil > DateTime.UtcNow))
+                && (ar.ValidUntil == null || ar.ValidUntil > DateTime.UtcNow)
+                && (ar.ValidFrom == null || ar.ValidFrom <= DateTime.UtcNow))
             .Include(ar => ar.Scopes)
             .ToListAsync(cancellationToken);
 
         // Additional in-memory filter for expiration (InMemory DB safety)
         var validDelegations = delegations
             .Where(d => d.ValidUntil == null || d.ValidUntil > DateTime.UtcNow)
+            .Where(d => d.ValidFrom == null || d.ValidFrom <= DateTime.UtcNow)
             .ToList();
 
         // Verify delegator still has the permission
@@ -274,7 +283,9 @@ public class AccessEvaluator : IAccessEvaluator
     {
         // Check direct user rules
         var directRules = await _context.AccessRules
-            .Where(ar => ar.PrincipalId == userCompany.PrincipalId && ar.PermissionId == permissionId && ar.Effect == AccessEffect.Allow && ar.Status == AccessRuleStatus.Active)
+            .Where(ar => ar.PrincipalId == userCompany.PrincipalId && ar.PermissionId == permissionId && ar.Effect == AccessEffect.Allow && ar.Status == AccessRuleStatus.Active
+                && (ar.ValidFrom == null || ar.ValidFrom <= DateTime.UtcNow)
+                && (ar.ValidUntil == null || ar.ValidUntil > DateTime.UtcNow))
             .ToListAsync(cancellationToken);
         if (directRules.Any()) return true;
 
@@ -301,13 +312,15 @@ public class AccessEvaluator : IAccessEvaluator
             .ToListAsync();
 
         var roleRules = await _context.AccessRules
-            .Where(ar => principalIds.Contains(ar.PrincipalId) && ar.PermissionId == permissionId && ar.Effect == AccessEffect.Allow && ar.Status == AccessRuleStatus.Active)
+            .Where(ar => principalIds.Contains(ar.PrincipalId) && ar.PermissionId == permissionId && ar.Effect == AccessEffect.Allow && ar.Status == AccessRuleStatus.Active
+                && (ar.ValidFrom == null || ar.ValidFrom <= DateTime.UtcNow)
+                && (ar.ValidUntil == null || ar.ValidUntil > DateTime.UtcNow))
             .ToListAsync(cancellationToken);
 
         return roleRules.Any();
     }
 
-    private async Task<AccessDecision> EvaluateRules(AccessRequest request, Permission permission, List<AccessRule> allRules, UserCompany userCompany)
+    private async Task<AccessDecision> EvaluateRules(AccessRequest request, Permission permission, List<AccessRule> allRules, UserCompany userCompany, CancellationToken cancellationToken)
     {
         var sources = new List<AccessSource>();
 
@@ -315,19 +328,59 @@ public class AccessEvaluator : IAccessEvaluator
         var allowRules = allRules.Where(r => r.Effect == AccessEffect.Allow).ToList();
         var denyRules = allRules.Where(r => r.Effect == AccessEffect.Deny).ToList();
 
-        // For branch-local DENY: group deny rules by their role branch
-        // For now, use scope-matched DENY check
-        var denyResult = CheckDenyBoundary(request, permission, denyRules, userCompany);
-        if (denyResult != null)
-            return denyResult;
+        // BRANCH-LOCAL DENY: For each user direct role (branch), check if there's a DENY in that branch
+        // Build a map of branch root (user's direct role) -> has DENY
+        var userRoleIds = userCompany.Roles.Select(r => r.RoleId).ToList();
+        var blockedBranches = new HashSet<Guid>();
+
+        foreach (var userRoleId in userRoleIds)
+        {
+            // Get all roles in this branch (ancestors + descendants + self)
+            var branchRoleIds = new HashSet<Guid>();
+            
+            // Add self
+            branchRoleIds.Add(userRoleId);
+            
+            // Ancestors
+            var ancestors = await GetAncestorRoleIdsAsync(userRoleId, cancellationToken);
+            foreach (var a in ancestors) branchRoleIds.Add(a);
+            
+            // Descendants
+            var descendants = await GetDescendantRoleIdsAsync(userRoleId, cancellationToken);
+            foreach (var d in descendants) branchRoleIds.Add(d);
+
+            // Check if this branch has a DENY for the requested permission/scope
+            var branchDenyRules = denyRules
+                .Where(r => r.BranchRootId.HasValue && IsScopeMatch(r, request.ScopeType, request.ScopeKey))
+                .Where(r => branchRoleIds.Contains(r.BranchRootId ?? Guid.Empty))
+                .ToList();
+
+            if (branchDenyRules.Any())
+            {
+                blockedBranches.Add(userRoleId);
+            }
+        }
+
+        // Filter DENY rules for scope match
+        var scopeMatchedDenyRules = denyRules.Where(r => IsScopeMatch(r, request.ScopeType, request.ScopeKey)).ToList();
+
+        // If any DENY exists (regardless of branch), return DENIED_EXPLICIT_DENY
+        // This handles self-DENY and cross-branch DENY that applies
+        if (scopeMatchedDenyRules.Any())
+        {
+            return new AccessDecision(false, "DENIED_EXPLICIT_DENY", [new AccessSource("Deny", "explicit", "All", [])]);
+        }
 
         // Check Prerequisite Gates (Edit → Read, etc.)
-        var prereqResult = await CheckPrerequisiteGates(request, permission, allowRules, denyRules, userCompany);
+        var prereqResult = await CheckPrerequisiteGates(request, permission, allRules.Where(r => r.Effect == AccessEffect.Allow).ToList(), allRules.Where(r => r.Effect == AccessEffect.Deny).ToList(), userCompany);
         if (prereqResult != null)
             return prereqResult;
 
         // Evaluate ALLOW rules with Scope
-        var allowedRules = allowRules.Where(r => IsScopeMatch(r, request.ScopeType, request.ScopeKey)).ToList();
+        var allowedRules = allowRules
+            .Where(r => IsScopeMatch(r, request.ScopeType, request.ScopeKey))
+            .ToList();
+
         if (allowedRules.Any())
         {
             var sourceTypes = allowedRules.Select(r => r.Origin.ToString()).Distinct().ToList();
@@ -342,20 +395,6 @@ public class AccessEvaluator : IAccessEvaluator
         }
 
         return new AccessDecision(false, "DENIED_NO_PERMISSION", sources);
-    }
-
-    private AccessDecision? CheckDenyBoundary(AccessRequest request, Permission permission, List<AccessRule> denyRules, UserCompany userCompany)
-    {
-        // For branch-local DENY: check if there's a DENY on the specific branch for this scope
-        // For now, use scope-matched DENY check
-        var relevantDenies = denyRules.Where(r => IsScopeMatch(r, request.ScopeType, request.ScopeKey)).ToList();
-
-        if (relevantDenies.Any())
-        {
-            return new AccessDecision(false, "DENIED_EXPLICIT_DENY", [new AccessSource("Deny", "explicit", "All", [])]);
-        }
-
-        return null;
     }
 
     private async Task<AccessDecision?> CheckPrerequisiteGates(AccessRequest request, Permission permission, List<AccessRule> allowRules, List<AccessRule> denyRules, UserCompany userCompany)
@@ -405,43 +444,6 @@ public class AccessEvaluator : IAccessEvaluator
         }
 
         return prerequisites;
-    }
-
-    private async Task<List<AccessRule>> GetAllDenyRulesForPermissionAsync(UserCompany userCompany, Guid permissionId, string? scopeType, string? scopeKey)
-    {
-        var denyRules = new List<AccessRule>();
-
-        // Direct User DENY
-        var directDenies = await _context.AccessRules
-            .Where(ar => ar.PrincipalId == userCompany.PrincipalId && ar.PermissionId == permissionId && ar.Effect == AccessEffect.Deny && ar.Status == AccessRuleStatus.Active)
-            .Include(ar => ar.Scopes)
-            .ToListAsync();
-        denyRules.AddRange(directDenies);
-
-        // Role DENY (including hierarchy)
-        var roleIds = userCompany.Roles.Select(r => r.RoleId).ToList();
-        if (roleIds.Any())
-        {
-            var allRelevantRoleIds = new HashSet<Guid>(roleIds);
-            foreach (var roleId in roleIds)
-            {
-                var ancestors = await GetAncestorRoleIdsAsync(roleId, default);
-                foreach (var a in ancestors) allRelevantRoleIds.Add(a);
-            }
-
-            var principalIds = await _context.AuthPrincipals
-                .Where(ap => ap.Type == PrincipalType.Role && allRelevantRoleIds.Contains(ap.ReferenceId) && ap.CompanyId == userCompany.CompanyId)
-                .Select(ap => ap.Id)
-                .ToListAsync();
-
-            var roleDenies = await _context.AccessRules
-                .Where(ar => principalIds.Contains(ar.PrincipalId) && ar.PermissionId == permissionId && ar.Effect == AccessEffect.Deny && ar.Status == AccessRuleStatus.Active)
-                .Include(ar => ar.Scopes)
-                .ToListAsync();
-            denyRules.AddRange(roleDenies);
-        }
-
-        return denyRules.Where(d => IsScopeMatch(d, scopeType, scopeKey)).ToList();
     }
 
     private static bool IsScopeMatch(AccessRule rule, string? scopeType, string? scopeKey)

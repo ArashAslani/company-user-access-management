@@ -16,6 +16,7 @@ public class AccessRuleConfiguration : IEntityTypeConfiguration<AccessRule>
         builder.Property(ar => ar.PermissionId).IsRequired();
         builder.Property(ar => ar.AuthorityRoleId);
         builder.Property(ar => ar.DelegatedFromUserId);
+        builder.Property(ar => ar.BranchRootId);
         builder.Property(ar => ar.Effect).IsRequired().HasConversion<int>();
         builder.Property(ar => ar.Origin).IsRequired().HasConversion<int>();
         builder.Property(ar => ar.ScopeMode).IsRequired().HasConversion<int>();
@@ -26,6 +27,7 @@ public class AccessRuleConfiguration : IEntityTypeConfiguration<AccessRule>
         builder.HasIndex(ar => new { ar.PrincipalId, ar.PermissionId, ar.Status });
         builder.HasIndex(ar => new { ar.PermissionId, ar.Effect, ar.Status });
         builder.HasIndex(ar => ar.AuthorityRoleId);
+        builder.HasIndex(ar => ar.BranchRootId);
 
         builder.HasOne(ar => ar.Principal)
             .WithMany(p => p.AccessRules)

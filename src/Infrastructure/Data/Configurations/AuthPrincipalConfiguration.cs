@@ -20,8 +20,8 @@ public class AuthPrincipalConfiguration : IEntityTypeConfiguration<AuthPrincipal
         builder.HasIndex(ap => new { ap.Type, ap.ReferenceId, ap.CompanyId, ap.ApplicationId }).IsUnique();
         builder.HasIndex(ap => new { ap.CompanyId, ap.ApplicationId });
 
-        builder.HasMany(ap => ap.AccessRules)
-            .WithOne()
+builder.HasMany(ap => ap.AccessRules)
+            .WithOne(ar => ar.Principal)
             .HasForeignKey(ar => ar.PrincipalId)
             .OnDelete(DeleteBehavior.Cascade);
     }
