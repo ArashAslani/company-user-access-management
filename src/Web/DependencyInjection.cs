@@ -1,8 +1,8 @@
 using Azure.Identity;
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Infrastructure.Data;
-using CleanArchitecture.Web.Authorization;
-using CleanArchitecture.Web.Services;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Infrastructure.Data;
+using CompanyAccessManagement.Web.Authorization;
+using CompanyAccessManagement.Web.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -53,3 +53,4 @@ public static class DependencyInjection
         }
     }
 }
+

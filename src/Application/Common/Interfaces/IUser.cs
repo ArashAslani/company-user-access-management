@@ -1,4 +1,4 @@
-﻿namespace CleanArchitecture.Application.Common.Interfaces;
+namespace CompanyAccessManagement.Application.Common.Interfaces;
 
 public interface IUser
 {
@@ -6,3 +6,4 @@ public interface IUser
     List<string>? Roles { get; }
 
 }
+

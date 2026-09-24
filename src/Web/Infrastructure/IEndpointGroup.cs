@@ -1,4 +1,4 @@
-namespace CleanArchitecture.Web.Infrastructure;
+namespace CompanyAccessManagement.Web.Infrastructure;
 
 /// <summary>
 /// Defines a group of related Minimal API endpoints.
@@ -17,3 +17,4 @@ public interface IEndpointGroup
 
     static abstract void Map(RouteGroupBuilder groupBuilder);
 }
+

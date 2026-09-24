@@ -1,6 +1,6 @@
-using CleanArchitecture.Application.Common.Security;
+using CompanyAccessManagement.Application.Common.Security;
 
-namespace CleanArchitecture.Application.Common.Interfaces;
+namespace CompanyAccessManagement.Application.Common.Interfaces;
 
 public interface IAccessEvaluator
 {

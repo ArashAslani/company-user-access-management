@@ -1,11 +1,11 @@
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Application.AccessControl.Roles.Queries;
-using CleanArchitecture.Application.Common.Models;
-using CleanArchitecture.Domain.AccessControl;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.AccessControl.Roles.Queries;
+using CompanyAccessManagement.Application.Common.Models;
+using CompanyAccessManagement.Domain.AccessControl;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace CleanArchitecture.Application.AccessControl.Roles.Queries;
+namespace CompanyAccessManagement.Application.AccessControl.Roles.Queries;
 
 public record GetRolesQuery : IRequest<PaginatedList<RoleDto>>
 {

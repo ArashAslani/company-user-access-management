@@ -1,12 +1,12 @@
-using CleanArchitecture.Domain.AccessControl;
+using CompanyAccessManagement.Domain.AccessControl;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-namespace CleanArchitecture.Infrastructure.Data.Configurations;
+namespace CompanyAccessManagement.Infrastructure.Data.Configurations;
 
-public class ApplicationConfiguration : IEntityTypeConfiguration<CleanArchitecture.Domain.AccessControl.Application>
+public class ApplicationConfiguration : IEntityTypeConfiguration<CompanyAccessManagement.Domain.AccessControl.Application>
 {
-    public void Configure(EntityTypeBuilder<CleanArchitecture.Domain.AccessControl.Application> builder)
+    public void Configure(EntityTypeBuilder<CompanyAccessManagement.Domain.AccessControl.Application> builder)
     {
         builder.ToTable("Applications", "auth");
 

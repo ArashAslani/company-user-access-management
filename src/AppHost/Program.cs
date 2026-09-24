@@ -1,4 +1,4 @@
-using CleanArchitecture.Shared;
+using CompanyAccessManagement.Shared;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -46,3 +46,4 @@ if (builder.ExecutionContext.IsRunMode)
 #endif
 
 builder.Build().Run();
+

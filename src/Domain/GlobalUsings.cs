@@ -1,3 +1,3 @@
-﻿global using CleanArchitecture.Domain.Common;
-global using CleanArchitecture.Domain.AccessControl;
-global using CleanArchitecture.Domain.Organization;
+global using CompanyAccessManagement.Domain.Common;
+global using CompanyAccessManagement.Domain.AccessControl;
+global using CompanyAccessManagement.Domain.Organization;

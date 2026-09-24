@@ -1,4 +1,4 @@
-namespace CleanArchitecture.Application.AccessControl.Scopes.Queries;
+namespace CompanyAccessManagement.Application.AccessControl.Scopes.Queries;
 
 public record WorkshopDto
 {

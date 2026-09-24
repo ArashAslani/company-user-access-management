@@ -1,9 +1,9 @@
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Application.Common.Security;
-using CleanArchitecture.Domain.AccessControl;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
+using CompanyAccessManagement.Domain.AccessControl;
 using Microsoft.EntityFrameworkCore;
 
-namespace CleanArchitecture.Infrastructure.Authorization;
+namespace CompanyAccessManagement.Infrastructure.Authorization;
 
 public class AccessEvaluator : IAccessEvaluator
 {

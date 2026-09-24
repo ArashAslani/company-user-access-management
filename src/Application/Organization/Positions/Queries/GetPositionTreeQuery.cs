@@ -1,10 +1,10 @@
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Application.Organization.Positions.Queries;
-using CleanArchitecture.Domain.Organization;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Organization.Positions.Queries;
+using CompanyAccessManagement.Domain.Organization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace CleanArchitecture.Application.Organization.Positions.Queries;
+namespace CompanyAccessManagement.Application.Organization.Positions.Queries;
 
 public record GetPositionTreeQuery : IRequest<PositionTreeDto>
 {

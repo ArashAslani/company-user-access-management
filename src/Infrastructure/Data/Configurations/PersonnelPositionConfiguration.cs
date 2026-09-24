@@ -1,8 +1,8 @@
-using CleanArchitecture.Domain.Organization;
+using CompanyAccessManagement.Domain.Organization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-namespace CleanArchitecture.Infrastructure.Data.Configurations;
+namespace CompanyAccessManagement.Infrastructure.Data.Configurations;
 
 public class PersonnelPositionConfiguration : IEntityTypeConfiguration<PersonnelPosition>
 {

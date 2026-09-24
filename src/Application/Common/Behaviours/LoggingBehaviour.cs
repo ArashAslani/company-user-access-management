@@ -1,8 +1,8 @@
-﻿using CleanArchitecture.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Interfaces;
 using MediatR.Pipeline;
 using Microsoft.Extensions.Logging;
 
-namespace CleanArchitecture.Application.Common.Behaviours;
+namespace CompanyAccessManagement.Application.Common.Behaviours;
 
 public class LoggingBehaviour<TRequest> : IRequestPreProcessor<TRequest>
     where TRequest : notnull
@@ -33,3 +33,4 @@ public class LoggingBehaviour<TRequest> : IRequestPreProcessor<TRequest>
             requestName, userId, userName, request);
     }
 }
+

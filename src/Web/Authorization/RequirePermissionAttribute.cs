@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 
-namespace CleanArchitecture.Web.Authorization;
+namespace CompanyAccessManagement.Web.Authorization;
 
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = true, Inherited = true)]
 public class RequirePermissionAttribute : AuthorizeAttribute

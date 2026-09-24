@@ -1,6 +1,6 @@
-using CleanArchitecture.Domain.Common;
+using CompanyAccessManagement.Domain.Common;
 
-namespace CleanArchitecture.Domain.AccessControl;
+namespace CompanyAccessManagement.Domain.AccessControl;
 
 public sealed class Permission : BaseAuditableEntity<Guid>
 {

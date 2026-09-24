@@ -1,4 +1,4 @@
-namespace CleanArchitecture.Application.Common.Attachments;
+namespace CompanyAccessManagement.Application.Common.Attachments;
 
 public record AttachmentDto
 {

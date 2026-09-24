@@ -1,4 +1,4 @@
-﻿namespace CleanArchitecture.Domain.Common;
+namespace CompanyAccessManagement.Domain.Common;
 
 public abstract class BaseAuditableEntity<TId> : BaseEntity<TId> where TId : notnull
 {

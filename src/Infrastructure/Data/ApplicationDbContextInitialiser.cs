@@ -1,12 +1,12 @@
-﻿using CleanArchitecture.Domain.AccessControl;
-using CleanArchitecture.Domain.Constants;
-using CleanArchitecture.Infrastructure.Identity;
+using CompanyAccessManagement.Domain.AccessControl;
+using CompanyAccessManagement.Domain.Constants;
+using CompanyAccessManagement.Infrastructure.Identity;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace CleanArchitecture.Infrastructure.Data;
+namespace CompanyAccessManagement.Infrastructure.Data;
 
 public static class InitialiserExtensions
 {
@@ -86,7 +86,7 @@ public class ApplicationDbContextInitialiser
         }
 
         // Seed QC Application
-        var qcApp = new CleanArchitecture.Domain.AccessControl.Application("QC", "Quality Control", "Quality Control Application");
+        var qcApp = new CompanyAccessManagement.Domain.AccessControl.Application("QC", "Quality Control", "Quality Control Application");
         _context.Applications.Add(qcApp);
 
         // Seed Resources and Permissions for QC

@@ -1,13 +1,13 @@
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Application.Common.Models;
-using CleanArchitecture.Application.Organization.Positions.Queries;
-using CleanArchitecture.Application.Organization.Positions.Commands;
-using CleanArchitecture.Web.Authorization;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Models;
+using CompanyAccessManagement.Application.Organization.Positions.Queries;
+using CompanyAccessManagement.Application.Organization.Positions.Commands;
+using CompanyAccessManagement.Web.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
-namespace CleanArchitecture.Web.Endpoints.Organization;
+namespace CompanyAccessManagement.Web.Endpoints.Organization;
 
 public static class PositionEndpoints
 {

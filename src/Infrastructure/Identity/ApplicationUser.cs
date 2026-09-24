@@ -1,6 +1,6 @@
-﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity;
 
-namespace CleanArchitecture.Infrastructure.Identity;
+namespace CompanyAccessManagement.Infrastructure.Identity;
 
 public class ApplicationUser : IdentityUser<Guid>
 {
@@ -9,3 +9,4 @@ public class ApplicationUser : IdentityUser<Guid>
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
 }
+

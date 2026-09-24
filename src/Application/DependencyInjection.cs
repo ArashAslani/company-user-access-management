@@ -1,5 +1,5 @@
-﻿using System.Reflection;
-using CleanArchitecture.Application.Common.Behaviours;
+using System.Reflection;
+using CompanyAccessManagement.Application.Common.Behaviours;
 using Microsoft.Extensions.Hosting;
 
 namespace Microsoft.Extensions.DependencyInjection;
@@ -23,3 +23,4 @@ public static class DependencyInjection
         });
     }
 }
+

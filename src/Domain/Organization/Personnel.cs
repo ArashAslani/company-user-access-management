@@ -1,7 +1,7 @@
-using CleanArchitecture.Domain.Common;
-using CleanArchitecture.Domain.Organization.Events;
+using CompanyAccessManagement.Domain.Common;
+using CompanyAccessManagement.Domain.Organization.Events;
 
-namespace CleanArchitecture.Domain.Organization;
+namespace CompanyAccessManagement.Domain.Organization;
 
 public sealed class Personnel : BaseAuditableEntity<Guid>
 {

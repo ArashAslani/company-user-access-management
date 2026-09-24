@@ -1,9 +1,9 @@
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Domain.Organization;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Domain.Organization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace CleanArchitecture.Application.Organization.Personnel.Commands;
+namespace CompanyAccessManagement.Application.Organization.Personnel.Commands;
 
 public record UpdatePositionAssignmentCommand : IRequest
 {

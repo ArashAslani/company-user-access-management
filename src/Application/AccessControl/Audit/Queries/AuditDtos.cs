@@ -1,4 +1,4 @@
-namespace CleanArchitecture.Application.AccessControl.Audit.Queries;
+namespace CompanyAccessManagement.Application.AccessControl.Audit.Queries;
 
 public record AuditLogDto
 {

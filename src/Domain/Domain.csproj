@@ -1,8 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>CleanArchitecture.Domain</RootNamespace>
-    <AssemblyName>CleanArchitecture.Domain</AssemblyName>
+    <RootNamespace>CompanyAccessManagement.Domain</RootNamespace>
+    <AssemblyName>CompanyAccessManagement.Domain</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>

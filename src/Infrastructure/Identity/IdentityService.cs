@@ -1,10 +1,10 @@
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Application.Common.Models;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
-namespace CleanArchitecture.Infrastructure.Identity;
+namespace CompanyAccessManagement.Infrastructure.Identity;
 
 public class IdentityService : IIdentityService
 {
@@ -79,3 +79,4 @@ public class IdentityService : IIdentityService
         return result.ToApplicationResult();
     }
 }
+

@@ -1,9 +1,9 @@
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Domain.AccessControl;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Domain.AccessControl;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace CleanArchitecture.Application.AccessControl.Roles.Commands;
+namespace CompanyAccessManagement.Application.AccessControl.Roles.Commands;
 
 public record CreateRoleCommand : IRequest<Guid>
 {

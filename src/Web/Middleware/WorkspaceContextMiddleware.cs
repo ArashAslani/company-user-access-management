@@ -1,9 +1,9 @@
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Infrastructure.Data;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
-namespace CleanArchitecture.Web.Middleware;
+namespace CompanyAccessManagement.Web.Middleware;
 
 public class WorkspaceContextMiddleware
 {
@@ -25,7 +25,7 @@ public class WorkspaceContextMiddleware
             if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
             {
                 var userCompany = await dbContext.UserCompanies
-                    .FirstOrDefaultAsync(uc => uc.UserId == userId && uc.CompanyId == companyId && uc.Status == CleanArchitecture.Domain.AccessControl.UserCompanyStatus.Active);
+                    .FirstOrDefaultAsync(uc => uc.UserId == userId && uc.CompanyId == companyId && uc.Status == CompanyAccessManagement.Domain.AccessControl.UserCompanyStatus.Active);
 
                 if (userCompany != null)
                 {

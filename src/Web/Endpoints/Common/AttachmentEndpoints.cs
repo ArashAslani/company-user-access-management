@@ -1,9 +1,9 @@
-using CleanArchitecture.Application.Common.Attachments;
-using CleanArchitecture.Application.Common.Attachments.Commands;
-using CleanArchitecture.Web.Authorization;
+using CompanyAccessManagement.Application.Common.Attachments;
+using CompanyAccessManagement.Application.Common.Attachments.Commands;
+using CompanyAccessManagement.Web.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace CleanArchitecture.Web.Endpoints.Common;
+namespace CompanyAccessManagement.Web.Endpoints.Common;
 
 public static class AttachmentEndpoints
 {

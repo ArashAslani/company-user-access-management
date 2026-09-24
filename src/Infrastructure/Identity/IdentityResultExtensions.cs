@@ -1,7 +1,7 @@
-﻿using CleanArchitecture.Application.Common.Models;
+using CompanyAccessManagement.Application.Common.Models;
 using Microsoft.AspNetCore.Identity;
 
-namespace CleanArchitecture.Infrastructure.Identity;
+namespace CompanyAccessManagement.Infrastructure.Identity;
 
 public static class IdentityResultExtensions
 {
@@ -12,3 +12,4 @@ public static class IdentityResultExtensions
             : Result.Failure(result.Errors.Select(e => e.Description));
     }
 }
+

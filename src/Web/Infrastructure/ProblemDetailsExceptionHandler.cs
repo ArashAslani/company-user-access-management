@@ -1,8 +1,8 @@
-using CleanArchitecture.Application.Common.Exceptions;
+using CompanyAccessManagement.Application.Common.Exceptions;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 
-namespace CleanArchitecture.Web.Infrastructure;
+namespace CompanyAccessManagement.Web.Infrastructure;
 
 /// <summary>
 /// Converts well-known application exceptions into RFC 9110-compliant <see cref="ProblemDetails"/> responses,
@@ -50,3 +50,4 @@ public class ProblemDetailsExceptionHandler : IExceptionHandler
         return true;
     }
 }
+

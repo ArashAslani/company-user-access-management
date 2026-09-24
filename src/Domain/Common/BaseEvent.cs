@@ -1,7 +1,8 @@
-﻿using MediatR;
+using MediatR;
 
-namespace CleanArchitecture.Domain.Common;
+namespace CompanyAccessManagement.Domain.Common;
 
 public abstract class BaseEvent : INotification
 {
 }
+

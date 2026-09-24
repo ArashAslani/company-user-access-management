@@ -1,13 +1,13 @@
 #pragma warning disable CS8602
 #pragma warning disable CS8632
 
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Application.AccessControl.Roles.Queries;
-using CleanArchitecture.Domain.AccessControl;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.AccessControl.Roles.Queries;
+using CompanyAccessManagement.Domain.AccessControl;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace CleanArchitecture.Application.AccessControl.Roles.Queries;
+namespace CompanyAccessManagement.Application.AccessControl.Roles.Queries;
 
 public record GetRoleQuery : IRequest<RoleDetailDto?>
 {

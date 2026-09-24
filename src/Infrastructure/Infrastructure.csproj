@@ -1,8 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>CleanArchitecture.Infrastructure</RootNamespace>
-    <AssemblyName>CleanArchitecture.Infrastructure</AssemblyName>
+    <RootNamespace>CompanyAccessManagement.Infrastructure</RootNamespace>
+    <AssemblyName>CompanyAccessManagement.Infrastructure</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>

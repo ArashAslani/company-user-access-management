@@ -1,8 +1,8 @@
-using CleanArchitecture.Domain.AccessControl;
+using CompanyAccessManagement.Domain.AccessControl;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-namespace CleanArchitecture.Infrastructure.Data.Configurations;
+namespace CompanyAccessManagement.Infrastructure.Data.Configurations;
 
 public class UserCompanyConfiguration : IEntityTypeConfiguration<UserCompany>
 {

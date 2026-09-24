@@ -1,6 +1,6 @@
-using CleanArchitecture.Domain.AccessControl;
+using CompanyAccessManagement.Domain.AccessControl;
 
-namespace CleanArchitecture.Application.AccessControl.Roles.Queries;
+namespace CompanyAccessManagement.Application.AccessControl.Roles.Queries;
 
 public record RoleDto
 {

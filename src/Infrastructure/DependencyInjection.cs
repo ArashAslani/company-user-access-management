@@ -1,8 +1,8 @@
-﻿using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Infrastructure.Authorization;
-using CleanArchitecture.Infrastructure.Data;
-using CleanArchitecture.Infrastructure.Data.Interceptors;
-using CleanArchitecture.Infrastructure.Identity;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Infrastructure.Authorization;
+using CompanyAccessManagement.Infrastructure.Data;
+using CompanyAccessManagement.Infrastructure.Data.Interceptors;
+using CompanyAccessManagement.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -80,3 +80,4 @@ public static class DependencyInjection
         builder.Services.AddTransient<IIdentityService, IdentityService>();
     }
 }
+

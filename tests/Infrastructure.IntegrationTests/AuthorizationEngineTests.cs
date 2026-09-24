@@ -1,10 +1,10 @@
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Application.Common.Security;
-using CleanArchitecture.Domain.AccessControl;
-using CleanArchitecture.Domain.Organization;
-using CleanArchitecture.Infrastructure.Authorization;
-using CleanArchitecture.Infrastructure.Data;
-using CleanArchitecture.Infrastructure.Identity;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
+using CompanyAccessManagement.Domain.AccessControl;
+using CompanyAccessManagement.Domain.Organization;
+using CompanyAccessManagement.Infrastructure.Authorization;
+using CompanyAccessManagement.Infrastructure.Data;
+using CompanyAccessManagement.Infrastructure.Identity;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -14,7 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NUnit.Framework;
 
-namespace CleanArchitecture.IntegrationTests;
+namespace CompanyAccessManagement.IntegrationTests;
 
 [TestFixture]
 public class AuthorizationEngineTests : TestBase
@@ -315,7 +315,7 @@ public abstract class TestBase
 
     protected async Task<Guid> CreateCompanyAsync(string code, string name)
     {
-        var company = new CleanArchitecture.Domain.Organization.Company(code, name);
+        var company = new CompanyAccessManagement.Domain.Organization.Company(code, name);
         Context.Companies.Add(company);
         await Context.SaveChangesAsync(default);
         return company.Id;
@@ -323,7 +323,7 @@ public abstract class TestBase
 
     protected async Task<Guid> CreateApplicationAsync(string code, string name)
     {
-        var app = new CleanArchitecture.Domain.AccessControl.Application(code, name);
+        var app = new CompanyAccessManagement.Domain.AccessControl.Application(code, name);
         Context.Applications.Add(app);
         await Context.SaveChangesAsync(default);
         return app.Id;

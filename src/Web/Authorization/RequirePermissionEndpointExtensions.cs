@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
-namespace CleanArchitecture.Web.Authorization;
+namespace CompanyAccessManagement.Web.Authorization;
 
 public static class RequirePermissionEndpointExtensions
 {

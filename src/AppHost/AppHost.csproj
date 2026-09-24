@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <RootNamespace>CleanArchitecture.AppHost</RootNamespace>
-    <AssemblyName>CleanArchitecture.AppHost</AssemblyName>
+    <RootNamespace>CompanyAccessManagement.AppHost</RootNamespace>
+    <AssemblyName>CompanyAccessManagement.AppHost</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>

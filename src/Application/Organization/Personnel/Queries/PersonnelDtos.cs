@@ -1,7 +1,7 @@
-using CleanArchitecture.Application.Common.Mappings;
-using CleanArchitecture.Domain.Organization;
+using CompanyAccessManagement.Application.Common.Mappings;
+using CompanyAccessManagement.Domain.Organization;
 
-namespace CleanArchitecture.Application.Organization.Personnel.Queries;
+namespace CompanyAccessManagement.Application.Organization.Personnel.Queries;
 
 public record PersonnelDto
 {

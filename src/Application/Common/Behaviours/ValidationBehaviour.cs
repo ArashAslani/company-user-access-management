@@ -1,6 +1,6 @@
-﻿using ValidationException = CleanArchitecture.Application.Common.Exceptions.ValidationException;
+using ValidationException = CompanyAccessManagement.Application.Common.Exceptions.ValidationException;
 
-namespace CleanArchitecture.Application.Common.Behaviours;
+namespace CompanyAccessManagement.Application.Common.Behaviours;
 
 public class ValidationBehaviour<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
     where TRequest : notnull
@@ -32,3 +32,4 @@ public class ValidationBehaviour<TRequest, TResponse> : IPipelineBehavior<TReque
         return await next();
     }
 }
+

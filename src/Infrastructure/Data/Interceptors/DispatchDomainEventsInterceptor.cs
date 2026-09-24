@@ -1,9 +1,9 @@
-﻿using CleanArchitecture.Domain.Common;
+using CompanyAccessManagement.Domain.Common;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 
-namespace CleanArchitecture.Infrastructure.Data.Interceptors;
+namespace CompanyAccessManagement.Infrastructure.Data.Interceptors;
 
 public class DispatchDomainEventsInterceptor : SaveChangesInterceptor
 {
@@ -48,3 +48,4 @@ public class DispatchDomainEventsInterceptor : SaveChangesInterceptor
             await _mediator.Publish(domainEvent);
     }
 }
+

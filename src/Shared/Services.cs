@@ -1,4 +1,4 @@
-﻿namespace CleanArchitecture.Shared;
+namespace CompanyAccessManagement.Shared;
 
 public static class Services
 {
@@ -26,3 +26,4 @@ public static class Services
     /// </summary>
     public const string Database = "CleanArchitectureDb";
 }
+

@@ -1,6 +1,6 @@
-using CleanArchitecture.Domain.Common;
+using CompanyAccessManagement.Domain.Common;
 
-namespace CleanArchitecture.Domain.Organization.Events;
+namespace CompanyAccessManagement.Domain.Organization.Events;
 
 public sealed class PersonnelCreatedEvent : BaseEvent
 {

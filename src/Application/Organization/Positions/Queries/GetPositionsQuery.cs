@@ -1,11 +1,11 @@
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Application.Common.Models;
-using CleanArchitecture.Domain.Organization;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Models;
+using CompanyAccessManagement.Domain.Organization;
 using AutoMapper;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace CleanArchitecture.Application.Organization.Positions.Queries;
+namespace CompanyAccessManagement.Application.Organization.Positions.Queries;
 
 public record GetPositionsQuery : IRequest<PaginatedList<PositionDto>>
 {

@@ -1,13 +1,13 @@
-﻿using System.Reflection;
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Domain.AccessControl;
-using CleanArchitecture.Domain.Organization;
-using CleanArchitecture.Infrastructure.Identity;
+using System.Reflection;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Domain.AccessControl;
+using CompanyAccessManagement.Domain.Organization;
+using CompanyAccessManagement.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
-namespace CleanArchitecture.Infrastructure.Data;
+namespace CompanyAccessManagement.Infrastructure.Data;
 
 public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>, IApplicationDbContext
 {
@@ -25,7 +25,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<Role> BusinessRoles => Set<Role>();
     public new DbSet<UserRole> UserRoles => Set<UserRole>();
     public DbSet<AuthPrincipal> AuthPrincipals => Set<AuthPrincipal>();
-    public DbSet<CleanArchitecture.Domain.AccessControl.Application> Applications => Set<CleanArchitecture.Domain.AccessControl.Application>();
+    public DbSet<CompanyAccessManagement.Domain.AccessControl.Application> Applications => Set<CompanyAccessManagement.Domain.AccessControl.Application>();
     public DbSet<Resource> Resources => Set<Resource>();
     public DbSet<Permission> Permissions => Set<Permission>();
     public DbSet<PermissionImplication> PermissionImplications => Set<PermissionImplication>();
@@ -35,7 +35,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
     // Explicit interface implementation for IApplicationDbContext
     DbSet<Role> IApplicationDbContext.Roles => BusinessRoles;
-    DbSet<CleanArchitecture.Domain.AccessControl.Application> IApplicationDbContext.Applications => Applications;
+    DbSet<CompanyAccessManagement.Domain.AccessControl.Application> IApplicationDbContext.Applications => Applications;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

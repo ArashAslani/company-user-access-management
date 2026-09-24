@@ -1,8 +1,8 @@
-using CleanArchitecture.Application.AccessControl.Scopes.Queries;
-using CleanArchitecture.Web.Authorization;
+using CompanyAccessManagement.Application.AccessControl.Scopes.Queries;
+using CompanyAccessManagement.Web.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace CleanArchitecture.Web.Endpoints.AccessControl;
+namespace CompanyAccessManagement.Web.Endpoints.AccessControl;
 
 public static class ScopeEndpoints
 {

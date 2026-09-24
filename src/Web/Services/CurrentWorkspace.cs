@@ -1,6 +1,6 @@
-using CleanArchitecture.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Interfaces;
 
-namespace CleanArchitecture.Web.Services;
+namespace CompanyAccessManagement.Web.Services;
 
 public class CurrentWorkspace : ICurrentWorkspace
 {

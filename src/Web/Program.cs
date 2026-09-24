@@ -1,4 +1,4 @@
-using CleanArchitecture.Infrastructure.Data;
+using CompanyAccessManagement.Infrastructure.Data;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -55,3 +55,4 @@ app.MapFallbackToFile("index.html");
 #endif
 
 app.Run();
+

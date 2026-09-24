@@ -1,4 +1,4 @@
-namespace CleanArchitecture.Application.Common.Security;
+namespace CompanyAccessManagement.Application.Common.Security;
 
 public sealed record AccessRequest(
     Guid UserId,

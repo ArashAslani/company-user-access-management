@@ -1,10 +1,10 @@
-using CleanArchitecture.Application.AccessControl.Scopes.Queries;
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Domain.AccessControl;
+using CompanyAccessManagement.Application.AccessControl.Scopes.Queries;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Domain.AccessControl;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace CleanArchitecture.Application.AccessControl.Scopes.Queries;
+namespace CompanyAccessManagement.Application.AccessControl.Scopes.Queries;
 
 public record GetResourceTreeQuery : IRequest<List<ScopeResourceTreeDto>>
 {

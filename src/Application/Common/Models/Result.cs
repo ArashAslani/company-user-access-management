@@ -1,4 +1,4 @@
-﻿namespace CleanArchitecture.Application.Common.Models;
+namespace CompanyAccessManagement.Application.Common.Models;
 
 public class Result
 {
@@ -22,3 +22,4 @@ public class Result
         return new Result(false, errors);
     }
 }
+

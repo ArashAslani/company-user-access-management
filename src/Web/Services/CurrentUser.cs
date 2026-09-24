@@ -1,8 +1,8 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 
-using CleanArchitecture.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Interfaces;
 
-namespace CleanArchitecture.Web.Services;
+namespace CompanyAccessManagement.Web.Services;
 
 public class CurrentUser : IUser
 {
@@ -17,3 +17,4 @@ public class CurrentUser : IUser
     public List<string>? Roles => _httpContextAccessor.HttpContext?.User?.FindAll(ClaimTypes.Role).Select(x => x.Value).ToList();
 
 }
+

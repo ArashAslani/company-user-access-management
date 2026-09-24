@@ -1,8 +1,8 @@
-using CleanArchitecture.Application.Common.Mappings;
-using CleanArchitecture.Domain.Organization;
+using CompanyAccessManagement.Application.Common.Mappings;
+using CompanyAccessManagement.Domain.Organization;
 using AutoMapper;
 
-namespace CleanArchitecture.Application.Organization.Positions.Queries;
+namespace CompanyAccessManagement.Application.Organization.Positions.Queries;
 
 public record PositionDto : IMapFrom<Position>
 {

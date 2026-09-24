@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
 
-namespace CleanArchitecture.Web.Infrastructure;
+namespace CompanyAccessManagement.Web.Infrastructure;
 
 /// <summary>
 /// Adds standard error responses to every OpenAPI operation. A 400 Bad Request is added to all
@@ -29,3 +29,4 @@ internal sealed class ApiExceptionOperationTransformer : IOpenApiOperationTransf
         return Task.CompletedTask;
     }
 }
+

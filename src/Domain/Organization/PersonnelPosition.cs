@@ -1,6 +1,6 @@
-using CleanArchitecture.Domain.Common;
+using CompanyAccessManagement.Domain.Common;
 
-namespace CleanArchitecture.Domain.Organization;
+namespace CompanyAccessManagement.Domain.Organization;
 
 public sealed class PersonnelPosition : BaseEntity
 {

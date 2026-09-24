@@ -1,8 +1,8 @@
-﻿using CleanArchitecture.Domain.AccessControl;
-using CleanArchitecture.Domain.Organization;
+using CompanyAccessManagement.Domain.AccessControl;
+using CompanyAccessManagement.Domain.Organization;
 using Microsoft.EntityFrameworkCore;
 
-namespace CleanArchitecture.Application.Common.Interfaces;
+namespace CompanyAccessManagement.Application.Common.Interfaces;
 
 public interface IApplicationDbContext
 {
@@ -18,7 +18,7 @@ public interface IApplicationDbContext
     DbSet<Role> Roles { get; }
     DbSet<UserRole> UserRoles { get; }
     DbSet<AuthPrincipal> AuthPrincipals { get; }
-    DbSet<CleanArchitecture.Domain.AccessControl.Application> Applications { get; }
+    DbSet<CompanyAccessManagement.Domain.AccessControl.Application> Applications { get; }
     DbSet<Resource> Resources { get; }
     DbSet<Permission> Permissions { get; }
     DbSet<PermissionImplication> PermissionImplications { get; }

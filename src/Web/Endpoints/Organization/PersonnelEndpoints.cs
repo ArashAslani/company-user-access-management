@@ -1,11 +1,11 @@
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Application.Common.Models;
-using CleanArchitecture.Application.Organization.Personnel.Queries;
-using CleanArchitecture.Application.Organization.Personnel.Commands;
-using CleanArchitecture.Web.Authorization;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Models;
+using CompanyAccessManagement.Application.Organization.Personnel.Queries;
+using CompanyAccessManagement.Application.Organization.Personnel.Commands;
+using CompanyAccessManagement.Web.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace CleanArchitecture.Web.Endpoints.Organization;
+namespace CompanyAccessManagement.Web.Endpoints.Organization;
 
 public static class PersonnelEndpoints
 {

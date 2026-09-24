@@ -1,10 +1,10 @@
-using CleanArchitecture.Application.Common.Attachments;
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Domain.Common;
+using CompanyAccessManagement.Application.Common.Attachments;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Domain.Common;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace CleanArchitecture.Application.Common.Attachments.Commands;
+namespace CompanyAccessManagement.Application.Common.Attachments.Commands;
 
 public record UploadAttachmentCommand : IRequest<AttachmentDto>
 {

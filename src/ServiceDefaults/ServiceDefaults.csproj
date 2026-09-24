@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <IsAspireSharedProject>true</IsAspireSharedProject>
-    <RootNamespace>CleanArchitecture.ServiceDefaults</RootNamespace>
-    <AssemblyName>CleanArchitecture.ServiceDefaults</AssemblyName>
+    <RootNamespace>CompanyAccessManagement.ServiceDefaults</RootNamespace>
+    <AssemblyName>CompanyAccessManagement.ServiceDefaults</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>

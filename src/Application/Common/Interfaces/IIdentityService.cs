@@ -1,6 +1,6 @@
-﻿using CleanArchitecture.Application.Common.Models;
+using CompanyAccessManagement.Application.Common.Models;
 
-namespace CleanArchitecture.Application.Common.Interfaces;
+namespace CompanyAccessManagement.Application.Common.Interfaces;
 
 public interface IIdentityService
 {
@@ -14,3 +14,4 @@ public interface IIdentityService
 
     Task<Result> DeleteUserAsync(string userId);
 }
+

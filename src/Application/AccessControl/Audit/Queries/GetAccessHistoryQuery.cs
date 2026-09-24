@@ -1,11 +1,11 @@
-using CleanArchitecture.Application.AccessControl.Audit.Queries;
-using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Application.Common.Models;
-using CleanArchitecture.Domain.AccessControl;
+using CompanyAccessManagement.Application.AccessControl.Audit.Queries;
+using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Models;
+using CompanyAccessManagement.Domain.AccessControl;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
-namespace CleanArchitecture.Application.AccessControl.Audit.Queries;
+namespace CompanyAccessManagement.Application.AccessControl.Audit.Queries;
 
 public record GetAccessHistoryQuery : IRequest<PaginatedList<AuditLogDto>>
 {

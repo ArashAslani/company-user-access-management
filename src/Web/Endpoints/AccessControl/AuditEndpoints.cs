@@ -1,9 +1,9 @@
-using CleanArchitecture.Application.AccessControl.Audit.Queries;
-using CleanArchitecture.Application.Common.Models;
-using CleanArchitecture.Web.Authorization;
+using CompanyAccessManagement.Application.AccessControl.Audit.Queries;
+using CompanyAccessManagement.Application.Common.Models;
+using CompanyAccessManagement.Web.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace CleanArchitecture.Web.Endpoints.AccessControl;
+namespace CompanyAccessManagement.Web.Endpoints.AccessControl;
 
 public static class AuditEndpoints
 {
