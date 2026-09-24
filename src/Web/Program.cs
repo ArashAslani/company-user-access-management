@@ -31,10 +31,28 @@ else
 }
 
 app.UseHttpsRedirection();
-app.UseCors(static builder => 
-    builder.AllowAnyMethod()
+
+// Configure CORS - allow specific origins from configuration, or allow any in development
+var allowedOrigins = app.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
+    ?? (app.Environment.IsDevelopment() ? new[] { "http://localhost:4200", "http://localhost:3000", "http://localhost:5000" } : Array.Empty<string>());
+
+if (allowedOrigins.Length > 0)
+{
+    app.UseCors(policy => policy
+        .WithOrigins(allowedOrigins)
+        .AllowAnyMethod()
         .AllowAnyHeader()
-        .AllowAnyOrigin());
+        .AllowCredentials());
+}
+else
+{
+    // In development without explicit config, allow common dev origins
+    app.UseCors(policy => policy
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .SetIsOriginAllowed(_ => true)
+        .AllowCredentials());
+}
 
 app.UseFileServer();
 
@@ -55,4 +73,3 @@ app.MapFallbackToFile("index.html");
 #endif
 
 app.Run();
-
