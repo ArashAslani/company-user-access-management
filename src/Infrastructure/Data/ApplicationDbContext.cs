@@ -1,7 +1,6 @@
 ﻿using System.Reflection;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Domain.AccessControl;
-using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.Organization;
 using CleanArchitecture.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
@@ -13,10 +12,6 @@ namespace CleanArchitecture.Infrastructure.Data;
 public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>, IApplicationDbContext
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
-
-    // Existing
-    public DbSet<TodoList> TodoLists => Set<TodoList>();
-    public DbSet<TodoItem> TodoItems => Set<TodoItem>();
 
     // Organization
     public DbSet<Company> Companies => Set<Company>();

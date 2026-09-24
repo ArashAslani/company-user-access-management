@@ -1,5 +1,4 @@
 ﻿using CleanArchitecture.Domain.AccessControl;
-using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.Organization;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,10 +6,6 @@ namespace CleanArchitecture.Application.Common.Interfaces;
 
 public interface IApplicationDbContext
 {
-    // Existing
-    DbSet<TodoList> TodoLists { get; }
-    DbSet<TodoItem> TodoItems { get; }
-
     // Organization
     DbSet<Company> Companies { get; }
     DbSet<Personnel> Personnel { get; }

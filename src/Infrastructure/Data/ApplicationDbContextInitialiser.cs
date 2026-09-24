@@ -1,7 +1,5 @@
 ﻿using CleanArchitecture.Domain.AccessControl;
 using CleanArchitecture.Domain.Constants;
-using CleanArchitecture.Domain.Entities;
-using CleanArchitecture.Domain.ValueObjects;
 using CleanArchitecture.Infrastructure.Identity;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
@@ -131,24 +129,5 @@ public class ApplicationDbContextInitialiser
         ncrApprove.AddImplication(ncrRead.Id);
 
         await _context.SaveChangesAsync();
-
-        // Default data
-        if (!_context.TodoLists.Any())
-        {
-            _context.TodoLists.Add(new TodoList
-            {
-                Title = "Tasks",
-                Colour = Colour.Green,
-                Items =
-                {
-                    new TodoItem { Title = "Make a todo list 📃" },
-                    new TodoItem { Title = "Check off the first item ✅" },
-                    new TodoItem { Title = "Realise you've already done two things on the list! 🤯"},
-                    new TodoItem { Title = "Reward yourself with a nice, long nap 🏆" },
-                }
-            });
-
-            await _context.SaveChangesAsync();
-        }
     }
 }
