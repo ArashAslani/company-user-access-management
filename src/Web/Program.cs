@@ -8,7 +8,13 @@ builder.AddServiceDefaults();
 
 builder.AddKeyVaultIfConfigured();
 builder.AddApplicationServices();
-builder.AddInfrastructureServices();
+
+// Only add infrastructure services if not in test environment
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.AddInfrastructureServices();
+}
+
 builder.AddWebServices();
 
 var app = builder.Build();

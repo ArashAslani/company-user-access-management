@@ -18,6 +18,7 @@ public class AccessEvaluator : IAccessEvaluator
     {
         // 1. Validate UserCompany membership
         var userCompany = await _context.UserCompanies
+            .Include(uc => uc.Roles)
             .FirstOrDefaultAsync(uc => uc.UserId == request.UserId && uc.CompanyId == request.CompanyId && uc.Status == UserCompanyStatus.Active, cancellationToken);
 
         if (userCompany == null)
@@ -35,9 +36,10 @@ public class AccessEvaluator : IAccessEvaluator
         }
 
         // 3. Validate Permission
-        var permission = await _context.Permissions
-            .Include(p => p.Resource)
-            .FirstOrDefaultAsync(p => p.Resource != null && p.Resource.ApplicationId == application.Id && p.Resource.Code + "." + p.ActionCode == request.PermissionCode, cancellationToken);
+        var permission = await (from p in _context.Permissions
+            join r in _context.Resources on p.ResourceId equals r.Id
+            where r.ApplicationId == application.Id && r.Code + "." + p.ActionCode == request.PermissionCode
+            select p).FirstOrDefaultAsync(cancellationToken);
 
         if (permission == null)
         {
@@ -274,7 +276,7 @@ public class AccessEvaluator : IAccessEvaluator
 
         if (relevantDenies.Any())
         {
-            return new AccessDecision(false, "DENIED_BOUNDARY", [new AccessSource("Deny", "boundary", "All", [])]);
+            return new AccessDecision(false, "DENIED_EXPLICIT_DENY", [new AccessSource("Deny", "explicit", "All", [])]);
         }
 
         // Check DENY on ancestor roles (Role Down boundary)
@@ -295,13 +297,14 @@ private async Task<AccessDecision?> CheckPrerequisiteGates(AccessRequest request
             var prereqPermission = await _context.Permissions.FirstOrDefaultAsync(p => p.Id == prereqId);
             if (prereqPermission == null) continue;
 
-            // Check if there's a DENY on the prerequisite in the same branch/scope
-            // This includes DENY from any role in the hierarchy (Role Down)
-            var prereqDenyRules = await GetAllDenyRulesForPermissionAsync(userCompany, prereqId, request.ScopeType, request.ScopeKey);
-
-            if (prereqDenyRules.Any(d => IsScopeMatch(d, request.ScopeType, request.ScopeKey)))
+            // Get all applicable rules for the prerequisite permission
+            var prereqAllRules = await GetAllApplicableRulesAsync(userCompany, prereqId, CancellationToken.None);
+            var prereqAllows = prereqAllRules.Where(r => r.Effect == AccessEffect.Allow && IsScopeMatch(r, request.ScopeType, request.ScopeKey)).ToList();
+            var prereqDenies = prereqAllRules.Where(r => r.Effect == AccessEffect.Deny && IsScopeMatch(r, request.ScopeType, request.ScopeKey)).ToList();
+            
+            if (prereqDenies.Any() || !prereqAllows.Any())
             {
-                return new AccessDecision(false, "DENIED_PREREQUISITE_GATE", [new AccessSource("PrerequisiteDeny", prereqPermission.Resource?.Code + "." + prereqPermission.ActionCode, "All", [])]);
+                return new AccessDecision(false, "DENIED_PREREQUISITE_GATE", [new AccessSource("PrerequisiteMissing", prereqPermission.Resource?.Code + "." + prereqPermission.ActionCode, "All", [])]);
             }
         }
 
