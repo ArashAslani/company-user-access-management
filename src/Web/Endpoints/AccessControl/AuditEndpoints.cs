@@ -1,16 +1,19 @@
 using CompanyAccessManagement.Application.AccessControl.Audit.Queries;
 using CompanyAccessManagement.Application.Common.Models;
 using CompanyAccessManagement.Web.Authorization;
+using CompanyAccessManagement.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 
 namespace CompanyAccessManagement.Web.Endpoints.AccessControl;
 
-public static class AuditEndpoints
+public sealed class AuditEndpoints : IEndpointGroup
 {
-    public static void MapAuditEndpoints(this IEndpointRouteBuilder app)
+    public static string RoutePrefix => "/api/v1/audit/access-history";
+
+    public static void Map(RouteGroupBuilder group)
     {
-        var group = app.MapGroup("/api/v1/audit/access-history")
-            .WithTags("Audit")
+        group.WithTags("Audit")
             .RequireAuthorization();
 
         // 4.1 List/Search access history

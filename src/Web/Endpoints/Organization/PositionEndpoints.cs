@@ -3,18 +3,19 @@ using CompanyAccessManagement.Application.Common.Models;
 using CompanyAccessManagement.Application.Organization.Positions.Queries;
 using CompanyAccessManagement.Application.Organization.Positions.Commands;
 using CompanyAccessManagement.Web.Authorization;
+using CompanyAccessManagement.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
 namespace CompanyAccessManagement.Web.Endpoints.Organization;
 
-public static class PositionEndpoints
+public sealed class PositionEndpoints : IEndpointGroup
 {
-    public static void MapPositionEndpoints(this IEndpointRouteBuilder app)
+    public static string RoutePrefix => "/api/v1/organization/positions";
+
+    public static void Map(RouteGroupBuilder group)
     {
-        var group = app.MapGroup("/api/v1/organization/positions")
-            .WithTags("Position")
+        group.WithTags("Position")
             .RequireAuthorization();
 
         // 1.1 List positions

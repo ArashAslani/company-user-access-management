@@ -1,15 +1,18 @@
 using CompanyAccessManagement.Application.AccessControl.Scopes.Queries;
 using CompanyAccessManagement.Web.Authorization;
+using CompanyAccessManagement.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 
 namespace CompanyAccessManagement.Web.Endpoints.AccessControl;
 
-public static class ScopeEndpoints
+public sealed class ScopeEndpoints : IEndpointGroup
 {
-    public static void MapScopeEndpoints(this IEndpointRouteBuilder app)
+    public static string RoutePrefix => "/api/v1/access-control/scopes";
+
+    public static void Map(RouteGroupBuilder group)
     {
-        var group = app.MapGroup("/api/v1/access-control/scopes")
-            .WithTags("Scope")
+        group.WithTags("Scope")
             .RequireAuthorization();
 
         // Get workshops for scope selection

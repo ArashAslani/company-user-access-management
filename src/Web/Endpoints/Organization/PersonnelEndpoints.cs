@@ -3,16 +3,19 @@ using CompanyAccessManagement.Application.Common.Models;
 using CompanyAccessManagement.Application.Organization.Personnel.Queries;
 using CompanyAccessManagement.Application.Organization.Personnel.Commands;
 using CompanyAccessManagement.Web.Authorization;
+using CompanyAccessManagement.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 
 namespace CompanyAccessManagement.Web.Endpoints.Organization;
 
-public static class PersonnelEndpoints
+public sealed class PersonnelEndpoints : IEndpointGroup
 {
-    public static void MapPersonnelEndpoints(this IEndpointRouteBuilder app)
+    public static string RoutePrefix => "/api/v1/organization/personnel";
+
+    public static void Map(RouteGroupBuilder group)
     {
-        var group = app.MapGroup("/api/v1/organization/personnel")
-            .WithTags("Personnel")
+        group.WithTags("Personnel")
             .RequireAuthorization();
 
         // 2.1 List personnel

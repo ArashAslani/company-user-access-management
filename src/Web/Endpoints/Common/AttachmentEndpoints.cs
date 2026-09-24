@@ -1,16 +1,19 @@
 using CompanyAccessManagement.Application.Common.Attachments;
 using CompanyAccessManagement.Application.Common.Attachments.Commands;
 using CompanyAccessManagement.Web.Authorization;
+using CompanyAccessManagement.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 
 namespace CompanyAccessManagement.Web.Endpoints.Common;
 
-public static class AttachmentEndpoints
+public sealed class AttachmentEndpoints : IEndpointGroup
 {
-    public static void MapAttachmentEndpoints(this IEndpointRouteBuilder app)
+    public static string RoutePrefix => "/api/v1/attachments";
+
+    public static void Map(RouteGroupBuilder group)
     {
-        var group = app.MapGroup("/api/v1/attachments")
-            .WithTags("Attachments")
+        group.WithTags("Attachments")
             .RequireAuthorization();
 
         // Upload attachment
