@@ -496,7 +496,6 @@ public class AuthorizationEngineTests : TestBase
     }
 
     [Test]
-    [Ignore("TODO: Fix AccessEvaluator delegation validation - currently allows delegation even after source loses permission")]
     public async Task EvaluateAsync_DelegationSourceLost_DeniesAccess()
     {
         // Delegator loses permission

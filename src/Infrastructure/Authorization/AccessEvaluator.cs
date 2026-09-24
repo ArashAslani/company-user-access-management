@@ -140,6 +140,8 @@ public class AccessEvaluator : IAccessEvaluator
         return await _context.AccessRules
             .Where(ar => ar.PrincipalId == principalId 
                 && ar.PermissionId == permissionId 
+                && ar.Effect == AccessEffect.Allow
+                && ar.Origin != AccessRuleOrigin.Delegated  // Exclude delegation rules - handled separately
                 && ar.Status == AccessRuleStatus.Active
                 && (ar.ValidFrom == null || ar.ValidFrom <= now)
                 && (ar.ValidUntil == null || ar.ValidUntil > now))
@@ -179,7 +181,7 @@ public class AccessEvaluator : IAccessEvaluator
 
         // Get all AccessRules for these principals
         var rules = await _context.AccessRules
-            .Where(ar => principalIds.Contains(ar.PrincipalId) && ar.PermissionId == permissionId && ar.Status == AccessRuleStatus.Active
+            .Where(ar => principalIds.Contains(ar.PrincipalId) && ar.PermissionId == permissionId && ar.Origin != AccessRuleOrigin.Delegated && ar.Status == AccessRuleStatus.Active
                 && (ar.ValidFrom == null || ar.ValidFrom <= DateTime.UtcNow)
                 && (ar.ValidUntil == null || ar.ValidUntil > DateTime.UtcNow))
             .Include(ar => ar.Scopes)
@@ -283,7 +285,7 @@ public class AccessEvaluator : IAccessEvaluator
     {
         // Check direct user rules
         var directRules = await _context.AccessRules
-            .Where(ar => ar.PrincipalId == userCompany.PrincipalId && ar.PermissionId == permissionId && ar.Effect == AccessEffect.Allow && ar.Status == AccessRuleStatus.Active
+            .Where(ar => ar.PrincipalId == userCompany.PrincipalId && ar.PermissionId == permissionId && ar.Effect == AccessEffect.Allow && ar.Origin != AccessRuleOrigin.Delegated && ar.Status == AccessRuleStatus.Active
                 && (ar.ValidFrom == null || ar.ValidFrom <= DateTime.UtcNow)
                 && (ar.ValidUntil == null || ar.ValidUntil > DateTime.UtcNow))
             .ToListAsync(cancellationToken);
@@ -316,6 +318,12 @@ public class AccessEvaluator : IAccessEvaluator
                 && (ar.ValidFrom == null || ar.ValidFrom <= DateTime.UtcNow)
                 && (ar.ValidUntil == null || ar.ValidUntil > DateTime.UtcNow))
             .ToListAsync(cancellationToken);
+        
+        Console.WriteLine($"[DEBUG] Role rules found: {roleRules.Count}");
+        foreach (var r in roleRules)
+        {
+            Console.WriteLine($"[DEBUG]   Rule: Id={r.Id}, Effect={r.Effect}, Origin={r.Origin}, PrincipalId={r.PrincipalId}, PermissionId={r.PermissionId}");
+        }
 
         return roleRules.Any();
     }
