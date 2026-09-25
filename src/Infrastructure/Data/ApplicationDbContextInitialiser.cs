@@ -137,109 +137,53 @@ public class ApplicationDbContextInitialiser
         attachmentsResource.AddPermission("Attachment.Read", "Read attachments");
         attachmentsResource.AddPermission("Attachment.Delete", "Delete attachments");
 
-        // Add permission implications: Edit => Read
-        var editPerm = productsResource.Permissions.First(p => p.ActionCode == "Edit");
-        var readPerm = productsResource.Permissions.First(p => p.ActionCode == "Read");
-        editPerm.AddImplication(readPerm.Id);
+        // Helper method to safely add implication if permission exists
+        var safeAddImplication = (Resource resource, string fromAction, string toAction) =>
+        {
+            var fromPerm = resource.Permissions.FirstOrDefault(p => p.ActionCode == fromAction);
+            var toPerm = resource.Permissions.FirstOrDefault(p => p.ActionCode == toAction);
+            if (fromPerm != null && toPerm != null)
+            {
+                fromPerm.AddImplication(toPerm.Id);
+            }
+        };
 
-        var labApprove = laboratoryResource.Permissions.First(p => p.ActionCode == "Approve");
-        var labRead = laboratoryResource.Permissions.First(p => p.ActionCode == "Read");
-        labApprove.AddImplication(labRead.Id);
+        // Edit => Read implications
+        safeAddImplication(productsResource, "Edit", "Read");
+        safeAddImplication(laboratoryResource, "Approve", "Read");
+        safeAddImplication(ncrResource, "Approve", "Read");
 
-        var ncrApprove = ncrResource.Permissions.First(p => p.ActionCode == "Approve");
-        var ncrRead = ncrResource.Permissions.First(p => p.ActionCode == "Read");
-        ncrApprove.AddImplication(ncrRead.Id);
+        // Personnel
+        safeAddImplication(organizationResource, "Personnel.Edit", "Personnel.Read");
+        safeAddImplication(organizationResource, "Personnel.Delete", "Personnel.Read");
 
-        // Personnel.Edit requires Personnel.Read
-        var personnelEdit = organizationResource.Permissions.First(p => p.ActionCode == "Personnel.Edit");
-        var personnelRead = organizationResource.Permissions.First(p => p.ActionCode == "Personnel.Read");
-        personnelEdit.AddImplication(personnelRead.Id);
+        // Position
+        safeAddImplication(organizationResource, "Position.Edit", "Position.Read");
+        safeAddImplication(organizationResource, "Position.Delete", "Position.Read");
 
-        // Personnel.Delete requires Personnel.Read
-        var personnelDelete = organizationResource.Permissions.First(p => p.ActionCode == "Personnel.Delete");
-        personnelDelete.AddImplication(personnelRead.Id);
+        // PersonnelPosition
+        safeAddImplication(organizationResource, "PersonnelPosition.Edit", "PersonnelPosition.Create");
+        safeAddImplication(organizationResource, "PersonnelPosition.Delete", "PersonnelPosition.Create");
 
-        // Position.Edit requires Position.Read
-        var positionEdit = organizationResource.Permissions.First(p => p.ActionCode == "Position.Edit");
-        var positionRead = organizationResource.Permissions.First(p => p.ActionCode == "Position.Read");
-        positionEdit.AddImplication(positionRead.Id);
+        // AuditLog
+        safeAddImplication(accessMgmtResource, "AuditLog.Export", "AuditLog.Read");
 
-        // Position.Delete requires Position.Read
-        var positionDelete = organizationResource.Permissions.First(p => p.ActionCode == "Position.Delete");
-        positionDelete.AddImplication(positionRead.Id);
+        // Role
+        safeAddImplication(accessMgmtResource, "Role.Permissions.Manage", "Role.Read");
+        safeAddImplication(accessMgmtResource, "Role.BulkAssign", "Role.Read");
+        safeAddImplication(accessMgmtResource, "Role.Create", "Role.Read");
+        safeAddImplication(accessMgmtResource, "Role.Edit", "Role.Read");
+        safeAddImplication(accessMgmtResource, "Role.Delete", "Role.Read");
 
-        // PersonnelPosition.Edit requires PersonnelPosition.Create
-        var ppEdit = organizationResource.Permissions.First(p => p.ActionCode == "PersonnelPosition.Edit");
-        var ppCreate = organizationResource.Permissions.First(p => p.ActionCode == "PersonnelPosition.Create");
-        ppEdit.AddImplication(ppCreate.Id);
+        // Permission
+        safeAddImplication(accessMgmtResource, "Permission.Assign", "Role.Read");
 
-        // PersonnelPosition.Delete requires PersonnelPosition.Create
-        var ppDelete = organizationResource.Permissions.First(p => p.ActionCode == "PersonnelPosition.Delete");
-        ppDelete.AddImplication(ppCreate.Id);
+        // Attachment
+        safeAddImplication(attachmentsResource, "Attachment.Delete", "Attachment.Create");
+        safeAddImplication(attachmentsResource, "Attachment.Read", "Attachment.Create");
 
-        // AuditLog.Export requires AuditLog.Read
-        var auditExport = accessMgmtResource.Permissions.First(p => p.ActionCode == "AuditLog.Export");
-        var auditRead = accessMgmtResource.Permissions.First(p => p.ActionCode == "AuditLog.Read");
-        auditExport.AddImplication(auditRead.Id);
-
-        // Role.Permissions.Manage requires Role.Read
-        var rolePermManage = accessMgmtResource.Permissions.First(p => p.ActionCode == "Role.Permissions.Manage");
-        var roleRead = accessMgmtResource.Permissions.First(p => p.ActionCode == "Role.Read");
-        rolePermManage.AddImplication(roleRead.Id);
-
-        // Role.BulkAssign requires Role.Read
-        var roleBulkAssign = accessMgmtResource.Permissions.First(p => p.ActionCode == "Role.BulkAssign");
-        roleBulkAssign.AddImplication(roleRead.Id);
-
-        // Role.Create, Role.Edit, Role.Delete require Role.Read
-        var roleCreate = accessMgmtResource.Permissions.First(p => p.ActionCode == "Role.Create");
-        roleCreate.AddImplication(roleRead.Id);
-        var roleEdit = accessMgmtResource.Permissions.First(p => p.ActionCode == "Role.Edit");
-        roleEdit.AddImplication(roleRead.Id);
-        var roleDelete = accessMgmtResource.Permissions.First(p => p.ActionCode == "Role.Delete");
-        roleDelete.AddImplication(roleRead.Id);
-
-        // Position.Create, Position.Edit, Position.Delete require Position.Read
-        var posCreate = organizationResource.Permissions.First(p => p.ActionCode == "Position.Create");
-        posCreate.AddImplication(positionRead.Id);
-        positionEdit.AddImplication(positionRead.Id);
-        positionDelete.AddImplication(positionRead.Id);
-
-        // Personnel.Create, Personnel.Edit, Personnel.Delete require Personnel.Read
-        var persCreate = organizationResource.Permissions.First(p => p.ActionCode == "Personnel.Create");
-        persCreate.AddImplication(personnelRead.Id);
-        personnelEdit.AddImplication(personnelRead.Id);
-        personnelDelete.AddImplication(personnelRead.Id);
-
-        // PersonnelPosition.Create, Edit, Delete chain
-        ppEdit.AddImplication(ppCreate.Id);
-        ppDelete.AddImplication(ppCreate.Id);
-
-        // PersonnelSignature.Create requires Personnel.Read
-        var sigCreate = organizationResource.Permissions.First(p => p.ActionCode == "PersonnelSignature.Create");
-        sigCreate.AddImplication(personnelRead.Id);
-
-        // Attachment.Delete requires Attachment.Create
-        var attDelete = attachmentsResource.Permissions.First(p => p.ActionCode == "Attachment.Delete");
-        var attCreate = attachmentsResource.Permissions.First(p => p.ActionCode == "Attachment.Create");
-        attDelete.AddImplication(attCreate.Id);
-
-        // Attachment.Read requires Attachment.Create
-        var attRead = attachmentsResource.Permissions.First(p => p.ActionCode == "Attachment.Read");
-        attRead.AddImplication(attCreate.Id);
-
-        // RuleScope.Read requires Resource.Read
-        var ruleScopeRead = accessMgmtResource.Permissions.First(p => p.ActionCode == "RuleScope.Read");
-        var resourceRead = accessMgmtResource.Permissions.First(p => p.ActionCode == "Resource.Read");
-        ruleScopeRead.AddImplication(resourceRead.Id);
-
-        // AccessManagement.Permission.Assign requires Role.Read
-        var permAssign = accessMgmtResource.Permissions.First(p => p.ActionCode == "Permission.Assign");
-        permAssign.AddImplication(roleRead.Id);
-
-        // AccessManagement.Role.Manage requires Role.Read
-        var roleManage = accessMgmtResource.Permissions.First(p => p.ActionCode == "Role.Manage");
-        roleManage.AddImplication(roleRead.Id);
+        // RuleScope
+        safeAddImplication(accessMgmtResource, "RuleScope.Read", "Resource.Read");
 
         await _context.SaveChangesAsync();
     }

@@ -9,7 +9,7 @@ builder.AddServiceDefaults();
 builder.AddKeyVaultIfConfigured();
 builder.AddApplicationServices();
 
-// Only add infrastructure services if not in test environment
+// Add infrastructure services for all environments except "Testing" (unit tests use their own setup)
 if (!builder.Environment.IsEnvironment("Testing"))
 {
     builder.AddInfrastructureServices();
@@ -20,7 +20,8 @@ builder.AddWebServices();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// For TestIntegration and Development, initialize database
+if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("TestIntegration"))
 {
     await app.InitialiseDatabaseAsync();
 }
