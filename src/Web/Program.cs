@@ -1,4 +1,5 @@
 using CompanyAccessManagement.Infrastructure.Data;
+using CompanyAccessManagement.Infrastructure.Identity;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -67,6 +68,7 @@ app.Map("/", () => Results.Redirect("/scalar"));
 #endif
 
 app.MapDefaultEndpoints();
+app.MapIdentityApi<ApplicationUser>();
 app.MapEndpoints(typeof(Program).Assembly);
 
 #if (!UseApiOnly)
