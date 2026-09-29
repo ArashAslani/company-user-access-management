@@ -82,6 +82,30 @@ public class PositionApiTests : ApiTestBase
     }
 
     [Test]
+    public async Task GetPositions_WithoutToken_ReturnsUnauthorized()
+    {
+        Client.DefaultRequestHeaders.Add("X-Company-Id", _companyId.ToString());
+
+        var response = await Client.GetAsync($"/api/v1/organization/positions/?companyId={_companyId}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Test]
+    public async Task GetPositions_ForCompanyUserIsNotMemberOf_ReturnsForbidden()
+    {
+        var otherCompanyId = await CreateCompanyAsync("OTHER", "Other Company");
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Position.Read");
+
+        session.Client.DefaultRequestHeaders.Remove("X-Company-Id");
+        session.Client.DefaultRequestHeaders.Add("X-Company-Id", otherCompanyId.ToString());
+
+        var response = await session.Client.GetAsync($"/api/v1/organization/positions/?companyId={otherCompanyId}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Test]
     public async Task CreatePosition_WithValidData_ReturnsCreated()
     {
         var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Position.Create");
