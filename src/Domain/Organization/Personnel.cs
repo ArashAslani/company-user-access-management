@@ -127,14 +127,25 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         }
     }
 
-    public PersonnelSignature UploadSignature(byte[] content, string mimeType, string contentHash, Guid uploadedByUserId)
-    {
-        if (content.Length > 8 * 1024 * 1024)
-            throw new InvalidOperationException("Signature file exceeds 8MB limit.");
+    public const int MaxSignatureBytes = 8 * 1024 * 1024;
 
-        var allowedMimeTypes = new[] { "image/png", "image/jpeg" };
-        if (!allowedMimeTypes.Contains(mimeType.ToLowerInvariant()))
-            throw new InvalidOperationException("Only PNG/JPEG signatures are allowed.");
+    public PersonnelSignature UploadSignature(byte[] content, string mimeType, string contentHash, Guid? uploadedByUserId)
+    {
+        if (content.Length == 0)
+            throw new DomainRuleViolationException("SIGNATURE_EMPTY", "Signature file is empty.");
+
+        if (content.Length > MaxSignatureBytes)
+            throw new DomainRuleViolationException("SIGNATURE_TOO_LARGE", "Signature file exceeds 8MB limit.");
+
+        mimeType = mimeType.ToLowerInvariant();
+        var matchesDeclaredType = mimeType switch
+        {
+            "image/png" => content.AsSpan().StartsWith(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }),
+            "image/jpeg" => content.AsSpan().StartsWith(new byte[] { 0xFF, 0xD8, 0xFF }),
+            _ => false
+        };
+        if (!matchesDeclaredType)
+            throw new DomainRuleViolationException("SIGNATURE_TYPE_NOT_ALLOWED", "Only PNG/JPEG signatures whose content matches the declared type are allowed.");
 
         var nextVersion = _signatures.Any() ? _signatures.Max(s => s.Version) + 1 : 1;
 

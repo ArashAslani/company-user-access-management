@@ -481,6 +481,51 @@ public class PersonnelApiTests : ApiTestBase
         (await response.Content.ReadAsStringAsync()).ShouldContain("SEALED_RECORD");
     }
 
+    [Test]
+    public async Task UploadSignature_Twice_KeepsOneCurrentVersion()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.PersonnelSignature.Create", "Organization.Personnel.Create");
+        var personnelId = await CreatePersonnelAsync(session.Client, "7777777777");
+
+        var first = await UploadPngAsync(session.Client, personnelId);
+        var second = await UploadPngAsync(session.Client, personnelId);
+
+        first.StatusCode.ShouldBe(HttpStatusCode.Created);
+        second.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var secondId = (await second.Content.ReadFromJsonAsync<IdResponse>())!.Id;
+
+        await WithDbAsync(async db =>
+        {
+            var signatures = await db.PersonnelSignatures.AsNoTracking().Where(s => s.PersonnelId == personnelId).ToListAsync();
+            signatures.Select(s => s.Version).OrderBy(v => v).ShouldBe(new[] { 1, 2 });
+            signatures.Single(s => s.IsCurrent).Id.ShouldBe(secondId);
+            signatures.ShouldAllBe(s => s.CreatedByUserId == session.UserId);
+        });
+    }
+
+    [Test]
+    public async Task UploadSignature_ContentNotMatchingDeclaredType_ReturnsConflict()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.PersonnelSignature.Create", "Organization.Personnel.Create");
+        var personnelId = await CreatePersonnelAsync(session.Client, "8888888888");
+
+        var fileContent = new ByteArrayContent("not an image"u8.ToArray());
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+        var content = new MultipartFormDataContent { { fileContent, "file", "signature.png" } };
+
+        var response = await session.Client.PostAsync($"/api/v1/organization/personnel/{personnelId}/signature", content);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("SIGNATURE_TYPE_NOT_ALLOWED");
+    }
+
+    private static async Task<HttpResponseMessage> UploadPngAsync(HttpClient client, Guid personnelId)
+    {
+        var fileContent = new ByteArrayContent(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00 });
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+        var content = new MultipartFormDataContent { { fileContent, "file", "signature.png" } };
+        return await client.PostAsync($"/api/v1/organization/personnel/{personnelId}/signature", content);
+    }
     private async Task<Guid> CreatePersonnelAsync(HttpClient client, string nationalCode)
     {
         var response = await client.PostAsJsonAsync("/api/v1/organization/personnel", new

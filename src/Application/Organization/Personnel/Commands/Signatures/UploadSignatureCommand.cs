@@ -1,5 +1,5 @@
+using System.Security.Cryptography;
 using CompanyAccessManagement.Application.Common.Interfaces;
-using CompanyAccessManagement.Domain.Organization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,10 +16,12 @@ public record UploadSignatureCommand : IRequest<Guid>
 public class UploadSignatureCommandHandler : IRequestHandler<UploadSignatureCommand, Guid>
 {
     private readonly IApplicationDbContext _context;
+    private readonly IUser _user;
 
-    public UploadSignatureCommandHandler(IApplicationDbContext context)
+    public UploadSignatureCommandHandler(IApplicationDbContext context, IUser user)
     {
         _context = context;
+        _user = user;
     }
 
     public async Task<Guid> Handle(UploadSignatureCommand request, CancellationToken cancellationToken)
@@ -28,24 +30,12 @@ public class UploadSignatureCommandHandler : IRequestHandler<UploadSignatureComm
             .Include(p => p.Signatures)
             .FirstOrDefaultAsync(p => p.Id == request.PersonnelId, cancellationToken);
 
-        if (personnel == null)
-            throw new InvalidOperationException("Personnel not found.");
+        Guard.Against.NotFound(request.PersonnelId, personnel);
 
-        // Validate file size (max 8MB)
-        if (request.Content.Length > 8 * 1024 * 1024)
-            throw new InvalidOperationException("Signature file exceeds 8MB limit.");
+        var contentHash = Convert.ToHexString(SHA256.HashData(request.Content));
 
-        // Validate content type
-        var allowedTypes = new[] { "image/png", "image/jpeg" };
-        if (!allowedTypes.Contains(request.ContentType.ToLowerInvariant()))
-            throw new InvalidOperationException("Only PNG/JPEG signatures are allowed.");
+        var signature = personnel.UploadSignature(request.Content, request.ContentType, contentHash, _user.Id);
 
-        // Compute content hash
-        using var sha256 = System.Security.Cryptography.SHA256.Create();
-        var contentHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(request.Content));
-
-        var signature = personnel.UploadSignature(request.Content, request.ContentType, contentHash, Guid.Empty);
-        
         await _context.SaveChangesAsync(cancellationToken);
 
         return signature.Id;

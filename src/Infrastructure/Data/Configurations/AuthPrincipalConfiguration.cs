@@ -12,6 +12,8 @@ public class AuthPrincipalConfiguration : IEntityTypeConfiguration<AuthPrincipal
 
         builder.HasKey(ap => ap.Id);
 
+        builder.Property(ap => ap.Id).ValueGeneratedNever();
+
         builder.Property(ap => ap.Type).IsRequired().HasConversion<int>();
         builder.Property(ap => ap.ReferenceId).IsRequired();
         builder.Property(ap => ap.CompanyId).IsRequired();

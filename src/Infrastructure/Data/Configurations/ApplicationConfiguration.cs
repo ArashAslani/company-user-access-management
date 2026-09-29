@@ -12,6 +12,8 @@ public class ApplicationConfiguration : IEntityTypeConfiguration<CompanyAccessMa
 
         builder.HasKey(a => a.Id);
 
+        builder.Property(a => a.Id).ValueGeneratedNever();
+
         builder.Property(a => a.Code).IsRequired().HasMaxLength(50);
         builder.Property(a => a.Name).IsRequired().HasMaxLength(100);
         builder.Property(a => a.Description).HasMaxLength(500);

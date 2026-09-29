@@ -12,6 +12,8 @@ public class UserCompanyConfiguration : IEntityTypeConfiguration<UserCompany>
 
         builder.HasKey(uc => uc.Id);
 
+        builder.Property(uc => uc.Id).ValueGeneratedNever();
+
         builder.Property(uc => uc.UserId).IsRequired();
         builder.Property(uc => uc.CompanyId).IsRequired();
         builder.Property(uc => uc.PrincipalId).IsRequired();

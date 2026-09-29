@@ -12,6 +12,8 @@ public class ResourceConfiguration : IEntityTypeConfiguration<Resource>
 
         builder.HasKey(r => r.Id);
 
+        builder.Property(r => r.Id).ValueGeneratedNever();
+
         builder.Property(r => r.ApplicationId).IsRequired();
         builder.Property(r => r.Code).IsRequired().HasMaxLength(100);
         builder.Property(r => r.Name).IsRequired().HasMaxLength(100);

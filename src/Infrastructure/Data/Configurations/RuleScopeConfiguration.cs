@@ -12,6 +12,8 @@ public class RuleScopeConfiguration : IEntityTypeConfiguration<RuleScope>
 
         builder.HasKey(rs => rs.Id);
 
+        builder.Property(rs => rs.Id).ValueGeneratedNever();
+
         builder.Property(rs => rs.AccessRuleId).IsRequired();
         builder.Property(rs => rs.ScopeType).IsRequired().HasMaxLength(50);
         builder.Property(rs => rs.ScopeKey).IsRequired().HasMaxLength(100);

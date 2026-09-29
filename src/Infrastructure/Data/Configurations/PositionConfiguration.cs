@@ -12,6 +12,8 @@ public class PositionConfiguration : IEntityTypeConfiguration<Position>
 
         builder.HasKey(p => p.Id);
 
+        builder.Property(p => p.Id).ValueGeneratedNever();
+
         builder.Property(p => p.CompanyId).IsRequired();
         builder.Property(p => p.Code).IsRequired().HasMaxLength(50);
         builder.Property(p => p.Title).IsRequired().HasMaxLength(100);

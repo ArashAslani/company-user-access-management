@@ -12,6 +12,8 @@ public class AccessRuleConfiguration : IEntityTypeConfiguration<AccessRule>
 
         builder.HasKey(ar => ar.Id);
 
+        builder.Property(ar => ar.Id).ValueGeneratedNever();
+
         builder.Property(ar => ar.PrincipalId).IsRequired();
         builder.Property(ar => ar.PermissionId).IsRequired();
         builder.Property(ar => ar.AuthorityRoleId);

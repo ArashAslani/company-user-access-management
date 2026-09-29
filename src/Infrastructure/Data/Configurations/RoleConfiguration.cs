@@ -12,6 +12,8 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
 
         builder.HasKey(r => r.Id);
 
+        builder.Property(r => r.Id).ValueGeneratedNever();
+
         builder.Property(r => r.CompanyId).IsRequired();
         builder.Property(r => r.ApplicationId).IsRequired();
         builder.Property(r => r.PrincipalId).IsRequired();

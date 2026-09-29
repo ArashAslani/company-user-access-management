@@ -12,6 +12,8 @@ public class PersonnelSignatureConfiguration : IEntityTypeConfiguration<Personne
 
         builder.HasKey(s => s.Id);
 
+        builder.Property(s => s.Id).ValueGeneratedNever();
+
         builder.Property(s => s.PersonnelId).IsRequired();
         builder.Property(s => s.Version).IsRequired();
         builder.Property(s => s.MimeType).IsRequired().HasMaxLength(50);
