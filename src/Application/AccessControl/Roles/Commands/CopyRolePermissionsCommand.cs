@@ -1,5 +1,6 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Domain.AccessControl;
+using CompanyAccessManagement.Domain.Common;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -23,34 +24,27 @@ public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermiss
 
     public async Task<int> Handle(CopyRolePermissionsCommand request, CancellationToken cancellationToken)
     {
+        if (request.RoleId == request.SourceRoleId)
+            throw new DomainRuleViolationException("ROLE_COPY_SAME_ROLE", "A role cannot copy permissions from itself.");
+
+        if (request.Mode is not ("APPEND" or "REPLACE"))
+            throw new DomainRuleViolationException("ROLE_COPY_INVALID_MODE", "Mode must be APPEND or REPLACE.");
+
         var targetRole = await _context.Roles
-            .Include(r => r.AccessRules)
             .FirstOrDefaultAsync(r => r.Id == request.RoleId, cancellationToken);
 
-        if (targetRole == null)
-            throw new InvalidOperationException("Target role not found.");
+        Guard.Against.NotFound(request.RoleId, targetRole);
 
         var sourceRole = await _context.Roles
-            .Include(r => r.AccessRules)
-                .ThenInclude(ar => ar.Scopes)
-            .FirstOrDefaultAsync(r => r.Id == request.SourceRoleId, cancellationToken);
+            .FirstOrDefaultAsync(r => r.Id == request.SourceRoleId && r.CompanyId == targetRole.CompanyId && r.ApplicationId == targetRole.ApplicationId, cancellationToken);
 
-        if (sourceRole == null)
-            throw new InvalidOperationException("Source role not found.");
+        Guard.Against.NotFound(request.SourceRoleId, sourceRole);
 
-        // Get target role's AuthPrincipal
-        var targetPrincipal = await _context.AuthPrincipals
-            .FirstOrDefaultAsync(ap => ap.Type == PrincipalType.Role && ap.ReferenceId == targetRole.Id && ap.CompanyId == targetRole.CompanyId && ap.ApplicationId == targetRole.ApplicationId);
-
-        if (targetPrincipal == null)
-        {
-            targetPrincipal = new AuthPrincipal(PrincipalType.Role, targetRole.Id, targetRole.CompanyId, targetRole.ApplicationId);
-            _context.AuthPrincipals.Add(targetPrincipal);
-        }
+        var targetPrincipal = await LoadRolePrincipalAsync(targetRole, cancellationToken);
+        var sourcePrincipal = await LoadRolePrincipalAsync(sourceRole, cancellationToken);
 
         if (request.Mode == "REPLACE")
         {
-            // Remove existing access rules
             var existingRules = targetPrincipal.AccessRules.ToList();
             foreach (var rule in existingRules)
             {
@@ -59,7 +53,7 @@ public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermiss
         }
 
         int copied = 0;
-        foreach (var sourceRule in sourceRole.AccessRules)
+        foreach (var sourceRule in sourcePrincipal.AccessRules.Where(r => r.Origin != AccessRuleOrigin.Delegated))
         {
             if (request.Mode == "APPEND" && targetPrincipal.AccessRules.Any(ar => ar.PermissionId == sourceRule.PermissionId && ar.Effect == sourceRule.Effect))
                 continue;
@@ -76,12 +70,23 @@ public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermiss
         }
 
         // Update policy revision
-        var app = await _context.Applications.FirstOrDefaultAsync(a => a.Id == targetRole.ApplicationId);
+        var app = await _context.Applications.FirstOrDefaultAsync(a => a.Id == targetRole.ApplicationId, cancellationToken);
         if (app != null)
             app.IncrementPolicyRevision();
 
         await _context.SaveChangesAsync(cancellationToken);
 
         return copied;
+    }
+
+    private async Task<AuthPrincipal> LoadRolePrincipalAsync(Role role, CancellationToken cancellationToken)
+    {
+        var principal = await _context.AuthPrincipals
+            .Include(ap => ap.AccessRules)
+                .ThenInclude(ar => ar.Scopes)
+            .FirstOrDefaultAsync(ap => ap.Type == PrincipalType.Role && ap.ReferenceId == role.Id && ap.CompanyId == role.CompanyId && ap.ApplicationId == role.ApplicationId, cancellationToken);
+
+        Guard.Against.NotFound(role.Id, principal);
+        return principal;
     }
 }

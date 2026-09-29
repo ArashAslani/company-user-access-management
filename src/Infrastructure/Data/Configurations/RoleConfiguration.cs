@@ -16,14 +16,12 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
 
         builder.Property(r => r.CompanyId).IsRequired();
         builder.Property(r => r.ApplicationId).IsRequired();
-        builder.Property(r => r.PrincipalId).IsRequired();
         builder.Property(r => r.Name).IsRequired().HasMaxLength(100);
         builder.Property(r => r.Kind).IsRequired().HasConversion<int>();
         builder.Property(r => r.ValidUntil);
         builder.Property(r => r.Status).IsRequired().HasConversion<int>();
 
         builder.HasIndex(r => new { r.CompanyId, r.ApplicationId, r.ParentRoleId });
-        builder.HasIndex(r => r.PrincipalId).IsUnique();
 
         builder.HasOne(r => r.ParentRole)
             .WithMany(r => r.Children)

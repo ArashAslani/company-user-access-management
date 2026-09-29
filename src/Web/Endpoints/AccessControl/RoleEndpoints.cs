@@ -128,19 +128,20 @@ public sealed class RoleEndpoints : IEndpointGroup
         .ProducesProblem(StatusCodes.Status404NotFound);
 
         // 1.8 Copy role permissions
-        group.MapPost("/{id:guid}/permissions/copy", async (
+        group.MapPost("/{id:guid}/permissions/copy-from", async (
             Guid id,
             CopyRolePermissionsCommand command,
             ISender sender) =>
         {
-            await sender.Send(command with { SourceRoleId = id });
-            return Results.Ok();
+            var copiedAccessRuleCount = await sender.Send(command with { RoleId = id });
+            return Results.Ok(new { copiedAccessRuleCount });
         })
         .RequirePermission("AccessManagement.Role.Permissions.Manage")
         .WithName("CopyRolePermissions")
         .Produces(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status400BadRequest)
-        .ProducesProblem(StatusCodes.Status404NotFound);
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status409Conflict);
 
         // 1.9 Bulk assign role
         group.MapPost("/bulk-assign", async (

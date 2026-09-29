@@ -8,7 +8,6 @@ public sealed class Role : BaseAuditableEntity<Guid>
     public Guid CompanyId { get; private set; }
     public Guid ApplicationId { get; private set; }
     public Guid? ParentRoleId { get; private set; }
-    public Guid PrincipalId { get; private set; }
     public string Code { get; private set; } = null!;
     public string Name { get; private set; } = null!;
     public string? Description { get; private set; }
@@ -39,7 +38,6 @@ public sealed class Role : BaseAuditableEntity<Guid>
         ParentRoleId = parentRoleId;
         ValidUntil = validUntil;
         Status = RoleStatus.Active;
-        PrincipalId = Guid.NewGuid();
     }
 
     public void UpdateDetails(string name, RoleKind kind, DateTime? validUntil)

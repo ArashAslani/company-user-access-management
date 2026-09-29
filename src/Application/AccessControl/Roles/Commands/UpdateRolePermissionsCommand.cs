@@ -37,30 +37,24 @@ public class UpdateRolePermissionsCommandHandler : IRequestHandler<UpdateRolePer
     public async Task Handle(UpdateRolePermissionsCommand request, CancellationToken cancellationToken)
     {
         var role = await _context.Roles
-            .Include(r => r.AccessRules)
-                .ThenInclude(ar => ar.Scopes)
             .FirstOrDefaultAsync(r => r.Id == request.RoleId, cancellationToken);
 
-        if (role == null)
-            throw new InvalidOperationException("Role not found.");
+        Guard.Against.NotFound(request.RoleId, role);
 
-        // Get role's AuthPrincipal
         var principal = await _context.AuthPrincipals
+            .Include(ap => ap.AccessRules)
+                .ThenInclude(ar => ar.Scopes)
             .FirstOrDefaultAsync(ap => ap.Type == PrincipalType.Role && ap.ReferenceId == role.Id && ap.CompanyId == role.CompanyId && ap.ApplicationId == role.ApplicationId, cancellationToken);
 
-        if (principal == null)
-        {
-            principal = new AuthPrincipal(PrincipalType.Role, role.Id, role.CompanyId, role.ApplicationId);
-            _context.AuthPrincipals.Add(principal);
-        }
+        Guard.Against.NotFound(role.Id, principal);
 
         foreach (var entry in request.Entries)
         {
-            var resource = await _context.Resources
-                .FirstOrDefaultAsync(r => r.Id == entry.ResourceId, cancellationToken);
+            var resourceExists = await _context.Resources
+                .AnyAsync(r => r.Id == entry.ResourceId && r.ApplicationId == role.ApplicationId, cancellationToken);
 
-            if (resource == null)
-                continue;
+            if (!resourceExists)
+                throw new NotFoundException(entry.ResourceId.ToString(), nameof(Resource));
 
             foreach (var action in entry.Actions)
             {
@@ -68,9 +62,8 @@ public class UpdateRolePermissionsCommandHandler : IRequestHandler<UpdateRolePer
                     .FirstOrDefaultAsync(p => p.ResourceId == entry.ResourceId && p.ActionCode == action.ActionCode, cancellationToken);
 
                 if (permission == null)
-                    continue;
+                    throw new NotFoundException($"{entry.ResourceId}/{action.ActionCode}", nameof(Permission));
 
-                // Find or create AccessRule
                 var rule = principal.AccessRules.FirstOrDefault(ar => ar.PermissionId == permission.Id && ar.Effect == action.Effect);
 
                 if (rule == null)
@@ -79,14 +72,15 @@ public class UpdateRolePermissionsCommandHandler : IRequestHandler<UpdateRolePer
                     principal.AddAccessRule(rule);
                 }
 
-                rule.SetScopeMode(action.ScopeKeys != null && action.ScopeKeys.Length > 0 ? ScopeMode.Selected : ScopeMode.None);
+                var selected = action.ScopeKeys is { Length: > 0 } && !string.IsNullOrEmpty(action.ScopeType);
+                rule.SetScopeMode(selected ? ScopeMode.Selected : ScopeMode.None);
+                rule.ClearScopes();
 
-                if (action.ScopeKeys != null && action.ScopeKeys.Length > 0 && !string.IsNullOrEmpty(action.ScopeType))
+                if (selected)
                 {
-                    rule.ClearScopes();
-                    foreach (var scopeKey in action.ScopeKeys)
+                    foreach (var scopeKey in action.ScopeKeys!.Distinct())
                     {
-                        rule.AddScope(action.ScopeType, scopeKey);
+                        rule.AddScope(action.ScopeType!, scopeKey);
                     }
                 }
             }

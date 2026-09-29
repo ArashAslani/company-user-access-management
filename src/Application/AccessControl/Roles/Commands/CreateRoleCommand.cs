@@ -63,6 +63,7 @@ public class CreateRoleCommandHandler : IRequestHandler<CreateRoleCommand, Guid>
         role.SetStatus(request.Status);
 
         _context.Roles.Add(role);
+        _context.AuthPrincipals.Add(AuthPrincipal.ForRole(role.Id, role.CompanyId, role.ApplicationId));
         await _context.SaveChangesAsync(cancellationToken);
 
         return role.Id;

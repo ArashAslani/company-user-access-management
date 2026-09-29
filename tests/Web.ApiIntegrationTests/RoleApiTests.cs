@@ -262,5 +262,152 @@ public class RoleApiTests : ApiTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
+    [Test]
+    public async Task CreateRole_CreatesRoleAuthPrincipal()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Create");
+
+        var roleId = await CreateRoleViaApiAsync(session, "WITHPRINCIPAL");
+
+        var principals = await WithDbAsync(db => db.AuthPrincipals.AsNoTracking()
+            .Where(ap => ap.Type == PrincipalType.Role && ap.ReferenceId == roleId)
+            .ToListAsync());
+        principals.Count.ShouldBe(1);
+        principals[0].CompanyId.ShouldBe(_companyId);
+        principals[0].ApplicationId.ShouldBe(_appId);
+    }
+
+    [Test]
+    public async Task UpdateRolePermissions_CalledTwice_DoesNotDuplicateRules()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Create", "AccessManagement.Role.Permissions.Manage");
+        var roleId = await CreateRoleViaApiAsync(session, "IDEMPOTENT");
+        var productsId = await GetProductsResourceIdAsync();
+
+        var scoped = PermissionsBody(productsId, ("Read", AccessEffect.Allow, "Workshop", ["A", "B"]));
+        (await session.Client.PutAsJsonAsync($"/api/v1/access-control/roles/{roleId}/permissions", scoped)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await session.Client.PutAsJsonAsync($"/api/v1/access-control/roles/{roleId}/permissions", scoped)).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var rules = await GetRoleRulesAsync(roleId);
+        rules.Count.ShouldBe(1);
+        rules[0].PermissionId.ShouldBe(_productsReadPermId);
+        rules[0].ScopeMode.ShouldBe(ScopeMode.Selected);
+        rules[0].Scopes.Select(s => s.ScopeKey).OrderBy(k => k).ShouldBe(["A", "B"]);
+
+        var unscoped = PermissionsBody(productsId, ("Read", AccessEffect.Allow, null, null));
+        (await session.Client.PutAsJsonAsync($"/api/v1/access-control/roles/{roleId}/permissions", unscoped)).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        rules = await GetRoleRulesAsync(roleId);
+        rules.Count.ShouldBe(1);
+        rules[0].ScopeMode.ShouldBe(ScopeMode.None);
+        rules[0].Scopes.ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task UpdateRolePermissions_UnknownAction_ReturnsNotFound()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Create", "AccessManagement.Role.Permissions.Manage");
+        var roleId = await CreateRoleViaApiAsync(session, "UNKNOWNACTION");
+        var productsId = await GetProductsResourceIdAsync();
+
+        var response = await session.Client.PutAsJsonAsync($"/api/v1/access-control/roles/{roleId}/permissions",
+            PermissionsBody(productsId, ("DoesNotExist", AccessEffect.Allow, null, null)));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await GetRoleRulesAsync(roleId)).ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task CopyRolePermissions_CopiesSourceRoleRulesIntoTarget()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Create", "AccessManagement.Role.Permissions.Manage");
+        var sourceId = await CreateRoleViaApiAsync(session, "SOURCE");
+        var targetId = await CreateRoleViaApiAsync(session, "TARGET");
+        var productsId = await GetProductsResourceIdAsync();
+
+        var body = PermissionsBody(productsId, ("Read", AccessEffect.Allow, "Workshop", ["A"]), ("Edit", AccessEffect.Deny, null, null));
+        (await session.Client.PutAsJsonAsync($"/api/v1/access-control/roles/{sourceId}/permissions", body)).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var first = await session.Client.PostAsJsonAsync($"/api/v1/access-control/roles/{targetId}/permissions/copy-from", new { SourceRoleId = sourceId, Mode = "APPEND" });
+        first.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await first.Content.ReadFromJsonAsync<CopyResponse>())!.CopiedAccessRuleCount.ShouldBe(2);
+
+        var second = await session.Client.PostAsJsonAsync($"/api/v1/access-control/roles/{targetId}/permissions/copy-from", new { SourceRoleId = sourceId, Mode = "APPEND" });
+        (await second.Content.ReadFromJsonAsync<CopyResponse>())!.CopiedAccessRuleCount.ShouldBe(0);
+
+        var targetRules = await GetRoleRulesAsync(targetId);
+        targetRules.Select(r => (r.PermissionId, r.Effect)).OrderBy(x => x.Effect)
+            .ShouldBe([(_productsReadPermId, AccessEffect.Allow), (_productsEditPermId, AccessEffect.Deny)]);
+        targetRules.Single(r => r.Effect == AccessEffect.Allow).Scopes.Single().ScopeKey.ShouldBe("A");
+        (await GetRoleRulesAsync(sourceId)).Count.ShouldBe(2);
+    }
+
+    [Test]
+    public async Task CopyRolePermissions_Replace_RemovesTargetRulesNotInSource()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Create", "AccessManagement.Role.Permissions.Manage");
+        var sourceId = await CreateRoleViaApiAsync(session, "SOURCE");
+        var targetId = await CreateRoleViaApiAsync(session, "TARGET");
+        var productsId = await GetProductsResourceIdAsync();
+
+        await session.Client.PutAsJsonAsync($"/api/v1/access-control/roles/{sourceId}/permissions", PermissionsBody(productsId, ("Read", AccessEffect.Allow, null, null)));
+        await session.Client.PutAsJsonAsync($"/api/v1/access-control/roles/{targetId}/permissions", PermissionsBody(productsId, ("Delete", AccessEffect.Allow, null, null)));
+
+        var response = await session.Client.PostAsJsonAsync($"/api/v1/access-control/roles/{targetId}/permissions/copy-from", new { SourceRoleId = sourceId, Mode = "REPLACE" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var targetRules = await GetRoleRulesAsync(targetId);
+        targetRules.Select(r => r.PermissionId).ShouldBe([_productsReadPermId]);
+    }
+
+    [Test]
+    public async Task CopyRolePermissions_FromItself_ReturnsConflict()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Create", "AccessManagement.Role.Permissions.Manage");
+        var roleId = await CreateRoleViaApiAsync(session, "SELF");
+
+        var response = await session.Client.PostAsJsonAsync($"/api/v1/access-control/roles/{roleId}/permissions/copy-from", new { SourceRoleId = roleId, Mode = "REPLACE" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    private async Task<Guid> CreateRoleViaApiAsync(AuthSession session, string code)
+    {
+        var response = await session.Client.PostAsJsonAsync("/api/v1/access-control/roles", new
+        {
+            CompanyId = _companyId,
+            ApplicationId = _appId,
+            Code = code,
+            Name = code,
+            Kind = RoleKind.Standard
+        });
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        return (await response.Content.ReadFromJsonAsync<CreateRoleResponse>())!.Id;
+    }
+
+    private Task<Guid> GetProductsResourceIdAsync()
+        => WithDbAsync(db => db.Resources.Where(r => r.ApplicationId == _appId && r.Code == "Products").Select(r => r.Id).SingleAsync());
+
+    private Task<List<AccessRule>> GetRoleRulesAsync(Guid roleId)
+        => WithDbAsync(db => (from ap in db.AuthPrincipals
+                              join ar in db.AccessRules.Include(r => r.Scopes) on ap.Id equals ar.PrincipalId
+                              where ap.Type == PrincipalType.Role && ap.ReferenceId == roleId
+                              select ar).AsNoTracking().ToListAsync());
+
+    private static object PermissionsBody(Guid resourceId, params (string ActionCode, AccessEffect Effect, string? ScopeType, string[]? ScopeKeys)[] actions)
+        => new
+        {
+            Entries = new[]
+            {
+                new
+                {
+                    ResourceId = resourceId,
+                    Actions = actions.Select(a => new { a.ActionCode, a.Effect, a.ScopeType, a.ScopeKeys }).ToArray()
+                }
+            }
+        };
+
     private record CreateRoleResponse(Guid Id);
+
+    private record CopyResponse(int CopiedAccessRuleCount);
 }
