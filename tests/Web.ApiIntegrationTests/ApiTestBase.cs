@@ -5,6 +5,7 @@ using CompanyAccessManagement.Domain.Organization;
 using CompanyAccessManagement.Infrastructure.Authorization;
 using CompanyAccessManagement.Infrastructure.Data;
 using CompanyAccessManagement.Infrastructure.Identity;
+using CompanyAccessManagement.Testing;
 using CompanyAccessManagement.Web.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
@@ -32,7 +33,7 @@ public abstract class ApiTestBase
     [SetUp]
     public virtual async Task SetUp()
     {
-        var factory = new ApiTestWebApplicationFactory();
+        var factory = new SqliteTestWebApplicationFactory();
         await factory.InitializeAsync();
         Factory = factory;
         Client = Factory.CreateClient();
@@ -393,59 +394,3 @@ public abstract class ApiTestBase
 }
 
 public record AuthSession(HttpClient Client, Guid UserId, Guid PrincipalId, Dictionary<string, Guid> GrantedPermissions);
-
-public class ApiTestWebApplicationFactory : WebApplicationFactory<Program>
-{
-    private readonly string _connectionString;
-
-    // A shared-cache in-memory SQLite database is destroyed when its last connection closes.
-    private readonly SqliteConnection _keepAliveConnection;
-
-    public ApiTestWebApplicationFactory()
-    {
-        _connectionString = $"DataSource=file:test-{Guid.NewGuid()}?mode=memory&cache=shared;Foreign Keys=True";
-        _keepAliveConnection = new SqliteConnection(_connectionString);
-        _keepAliveConnection.Open();
-    }
-
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
-    {
-        // TestIntegration runs AddInfrastructureServices(), so auth and Identity are exactly as in production.
-        builder.UseEnvironment("TestIntegration");
-        builder.UseSetting("ConnectionStrings:" + CompanyAccessManagement.Shared.Services.Database, _connectionString);
-
-        builder.ConfigureTestServices(services =>
-        {
-            services.RemoveAll<DbContextOptions<ApplicationDbContext>>();
-            services.AddDbContext<ApplicationDbContext>((sp, options) =>
-            {
-                options.AddInterceptors(sp.GetServices<ISaveChangesInterceptor>());
-                options.UseSqlite(_connectionString);
-                options.ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
-            });
-
-            services.AddSingleton<IEmailSender<ApplicationUser>, DummyEmailSender>();
-        });
-    }
-
-    public async Task InitializeAsync()
-    {
-        using var scope = Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        await db.Database.MigrateAsync();
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        base.Dispose(disposing);
-        if (disposing)
-            _keepAliveConnection.Dispose();
-    }
-
-    private class DummyEmailSender : Microsoft.AspNetCore.Identity.IEmailSender<ApplicationUser>
-    {
-        public Task SendConfirmationLinkAsync(ApplicationUser user, string email, string confirmationLink) => Task.CompletedTask;
-        public Task SendPasswordResetLinkAsync(ApplicationUser user, string email, string resetLink) => Task.CompletedTask;
-        public Task SendPasswordResetCodeAsync(ApplicationUser user, string email, string resetCode) => Task.CompletedTask;
-    }
-}

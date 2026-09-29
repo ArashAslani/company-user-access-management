@@ -31,7 +31,6 @@ public static class DependencyInjection
 #else
             options.UseSqlite(connectionString);
 #endif
-            options.ConfigureWarnings(warnings => warnings.Ignore(RelationalEventId.PendingModelChangesWarning));
         });
 
 #if UsePostgreSQL

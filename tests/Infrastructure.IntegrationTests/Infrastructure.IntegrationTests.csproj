@@ -29,4 +29,8 @@
         <ProjectReference Include="..\..\src\Web\Web.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <Compile Include="..\Shared\SqliteTestWebApplicationFactory.cs" Link="Shared\SqliteTestWebApplicationFactory.cs" />
+    </ItemGroup>
+
 </Project>

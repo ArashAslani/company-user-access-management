@@ -27,6 +27,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\SqliteTestWebApplicationFactory.cs" Link="Shared\SqliteTestWebApplicationFactory.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="NUnit.Framework" />
     <Using Include="Shouldly" />
   </ItemGroup>

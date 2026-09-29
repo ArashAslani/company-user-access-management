@@ -18,5 +18,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Infrastructure.IntegrationTests/Infrastructure.IntegrationTests.csproj" />
+    <Project Path="tests/Web.ApiIntegrationTests/Web.ApiIntegrationTests.csproj" />
   </Folder>
 </Solution>

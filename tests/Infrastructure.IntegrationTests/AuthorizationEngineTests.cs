@@ -1,28 +1,14 @@
-using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.AccessControl;
 using CompanyAccessManagement.Domain.Organization;
-using CompanyAccessManagement.Infrastructure.Authorization;
 using CompanyAccessManagement.Infrastructure.Data;
-using CompanyAccessManagement.Infrastructure.Identity;
-using CompanyAccessManagement.Web.Authorization;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Data.Sqlite;
-using NUnit.Framework;
 
 namespace CompanyAccessManagement.IntegrationTests;
 
 [TestFixture]
 public class AuthorizationEngineTests : TestBase
 {
-    private IAccessEvaluator _accessEvaluator = null!;
     private Guid _companyId;
     private Guid _appId;
     private Guid _productsReadPermId;
@@ -54,9 +40,6 @@ public class AuthorizationEngineTests : TestBase
             dbContext.Entry(userCompany).Property("PrincipalId").CurrentValue = _testPrincipalId;
             await dbContext.SaveChangesAsync(default);
         }
-
-        // Create access evaluator using the same scope as the test context
-        _accessEvaluator = Scope.ServiceProvider.GetRequiredService<IAccessEvaluator>();
     }
 
     [Test]
@@ -65,7 +48,7 @@ public class AuthorizationEngineTests : TestBase
         var otherCompanyId = Guid.NewGuid();
         var request = new AccessRequest(_testUserId, otherCompanyId, "QC", "Products.Read");
 
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.False);
         Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_MEMBERSHIP"));
@@ -79,30 +62,7 @@ public class AuthorizationEngineTests : TestBase
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read");
         
-        // Debug: Check what's in the database
-        var userCompany = await Context.UserCompanies.FirstOrDefaultAsync(uc => uc.UserId == _testUserId);
-        if (userCompany != null)
-        {
-            Console.WriteLine($"UserCompany: {userCompany.Id}, PrincipalId: {userCompany.PrincipalId}, Status: {userCompany.Status}");
-        }
-        else
-        {
-            Console.WriteLine("UserCompany: NULL");
-        }
-        
-        var permissions = await Context.Permissions.Include(p => p.Resource).ToListAsync();
-        foreach (var p in permissions)
-        {
-            Console.WriteLine($"Permission: {p.Id}, Resource: {p.Resource?.Code}, Action: {p.ActionCode}");
-        }
-        
-        var rules = await Context.AccessRules.Include(r => r.Scopes).ToListAsync();
-        foreach (var r in rules)
-        {
-            Console.WriteLine($"AccessRule: PrincipalId={r.PrincipalId}, PermissionId={r.PermissionId}, Effect={r.Effect}, ScopeMode={r.ScopeMode}");
-        }
-
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.True);
         Assert.That(decision.ReasonCode, Is.EqualTo("ALLOWED"));
@@ -121,7 +81,7 @@ public class AuthorizationEngineTests : TestBase
         await Context.SaveChangesAsync(default);
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.True);
     }
@@ -142,7 +102,7 @@ public class AuthorizationEngineTests : TestBase
         await CreateAccessRuleAsync(authPrincipal.Id, _productsEditPermId, AccessEffect.Deny);
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Edit");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.False);
         Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_EXPLICIT_DENY"));
@@ -156,7 +116,7 @@ public class AuthorizationEngineTests : TestBase
 
         // Request with scope Workshop:B
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read", "Workshop", "B");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.False);
         Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_NO_PERMISSION"));
@@ -170,7 +130,7 @@ public class AuthorizationEngineTests : TestBase
 
         // Request with any scope
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read", "Workshop", "Any");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.True);
     }
@@ -183,12 +143,12 @@ public class AuthorizationEngineTests : TestBase
 
         // Request without scope - should work
         var requestNoScope = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read");
-        var decisionNoScope = await _accessEvaluator.EvaluateAsync(requestNoScope);
+        var decisionNoScope = await EvaluateAsync(requestNoScope);
         Assert.That(decisionNoScope.Allowed, Is.True);
 
         // Request with scope - should fail
         var requestWithScope = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read", "Workshop", "A");
-        var decisionWithScope = await _accessEvaluator.EvaluateAsync(requestWithScope);
+        var decisionWithScope = await EvaluateAsync(requestWithScope);
         Assert.That(decisionWithScope.Allowed, Is.False);
     }
 
@@ -212,11 +172,11 @@ public class AuthorizationEngineTests : TestBase
 
         // Should have both permissions
         var readRequest = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read");
-        var readDecision = await _accessEvaluator.EvaluateAsync(readRequest);
+        var readDecision = await EvaluateAsync(readRequest);
         Assert.That(readDecision.Allowed, Is.True);
 
         var editRequest = new AccessRequest(_testUserId, _companyId, "QC", "Products.Edit");
-        var editDecision = await _accessEvaluator.EvaluateAsync(editRequest);
+        var editDecision = await EvaluateAsync(editRequest);
         Assert.That(editDecision.Allowed, Is.True);
     }
 
@@ -231,7 +191,7 @@ public class AuthorizationEngineTests : TestBase
         await Context.SaveChangesAsync(default);
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Delete");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.True);
         Assert.That(decision.ReasonCode, Is.EqualTo("ALLOWED_COMPANY_SUPER_ADMIN"));
@@ -244,7 +204,7 @@ public class AuthorizationEngineTests : TestBase
         await CreateAccessRuleAsync(_testPrincipalId, _productsEditPermId, AccessEffect.Allow);
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Edit");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         // Should be denied because Edit requires Read and Read is denied
         Assert.That(decision.Allowed, Is.False);
@@ -259,7 +219,7 @@ public class AuthorizationEngineTests : TestBase
         await CreateAccessRuleAsync(_testPrincipalId, _productsEditPermId, AccessEffect.Allow);
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Edit");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.True);
     }
@@ -299,7 +259,7 @@ public class AuthorizationEngineTests : TestBase
 
         // Request for Workshop B - DENY on Workshop A should not block Workshop B
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Edit", "Workshop", "B");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         // Expected: ALLOWED because DENY is scope-matched to Workshop A only
         Assert.That(decision.Allowed, Is.True);
@@ -327,7 +287,7 @@ public class AuthorizationEngineTests : TestBase
         await Context.SaveChangesAsync(default);
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Edit");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.False);
         Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_EXPLICIT_DENY"));
@@ -359,7 +319,7 @@ public class AuthorizationEngineTests : TestBase
         await Context.SaveChangesAsync(default);
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Edit");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.False);
         Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_EXPLICIT_DENY"));
@@ -391,7 +351,7 @@ public class AuthorizationEngineTests : TestBase
         await Context.SaveChangesAsync(default);
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Edit");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.False);
         Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_EXPLICIT_DENY"));
@@ -426,7 +386,7 @@ public class AuthorizationEngineTests : TestBase
         await Context.SaveChangesAsync(default);
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Edit");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.False);
         Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_PREREQUISITE_GATE"));
@@ -458,7 +418,7 @@ public class AuthorizationEngineTests : TestBase
         await Context.SaveChangesAsync(default);
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.True);
     }
@@ -490,7 +450,7 @@ public class AuthorizationEngineTests : TestBase
         await Context.SaveChangesAsync(default);
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         // Expired delegation should be denied
         Assert.That(decision.Allowed, Is.False);
@@ -533,7 +493,7 @@ public class AuthorizationEngineTests : TestBase
         }
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         // Delegator lost permission, delegation should be denied
         Assert.That(decision.Allowed, Is.False);
@@ -558,7 +518,7 @@ public class AuthorizationEngineTests : TestBase
 
         // Try to access Company B
         var request = new AccessRequest(_testUserId, companyB, "QC", "Products.Read");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.False);
         Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_MEMBERSHIP"));
@@ -579,7 +539,7 @@ public class AuthorizationEngineTests : TestBase
 
         // Try to access Company B
         var request = new AccessRequest(_testUserId, companyB, "QC", "Products.Read");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.True);
         Assert.That(decision.ReasonCode, Is.EqualTo("ALLOWED_GLOBAL_SUPER_ADMIN"));
@@ -596,12 +556,12 @@ public class AuthorizationEngineTests : TestBase
 
         // Request without scope
         var requestNoScope = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read");
-        var decisionNoScope = await _accessEvaluator.EvaluateAsync(requestNoScope);
+        var decisionNoScope = await EvaluateAsync(requestNoScope);
         Assert.That(decisionNoScope.Allowed, Is.True);
 
         // Request with scope
         var requestWithScope = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read", "Workshop", "A");
-        var decisionWithScope = await _accessEvaluator.EvaluateAsync(requestWithScope);
+        var decisionWithScope = await EvaluateAsync(requestWithScope);
         Assert.That(decisionWithScope.Allowed, Is.False);
     }
 
@@ -614,7 +574,7 @@ public class AuthorizationEngineTests : TestBase
         await CreateAccessRuleAsync(_testPrincipalId, _productsReadPermId, AccessEffect.Allow, ScopeMode.All);
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read", "Workshop", "AnyScope");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.True);
     }
@@ -634,7 +594,7 @@ public class AuthorizationEngineTests : TestBase
 
         // Request for App B
         var request = new AccessRequest(_testUserId, _companyId, "APPB", "Products.Read");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.False);
         Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_PERMISSION_NOT_FOUND"));
@@ -650,11 +610,11 @@ public class AuthorizationEngineTests : TestBase
         await CreateAccessRuleAsync(_testPrincipalId, _productsEditPermId, AccessEffect.Allow);
 
         var readRequest = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read");
-        var readDecision = await _accessEvaluator.EvaluateAsync(readRequest);
+        var readDecision = await EvaluateAsync(readRequest);
         Assert.That(readDecision.Allowed, Is.True);
 
         var editRequest = new AccessRequest(_testUserId, _companyId, "QC", "Products.Edit");
-        var editDecision = await _accessEvaluator.EvaluateAsync(editRequest);
+        var editDecision = await EvaluateAsync(editRequest);
         Assert.That(editDecision.Allowed, Is.True);
     }
 
@@ -684,310 +644,8 @@ public class AuthorizationEngineTests : TestBase
         await Context.SaveChangesAsync(default);
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read");
-        var decision = await _accessEvaluator.EvaluateAsync(request);
+        var decision = await EvaluateAsync(request);
 
         Assert.That(decision.Allowed, Is.True);
-    }
-}
-
-// ============================================================================
-// TestBase - Shared test infrastructure
-// ============================================================================
-
-public abstract class TestBase
-{
-    protected TestWebApplicationFactory Factory { get; private set; } = null!;
-    protected IServiceScope Scope { get; private set; } = null!;
-    protected IApplicationDbContext Context { get; private set; } = null!;
-    protected UserManager<ApplicationUser> UserManager { get; private set; } = null!;
-    protected RoleManager<IdentityRole<Guid>> RoleManager { get; private set; } = null!;
-
-    [SetUp]
-    public virtual async Task SetUp()
-    {
-        Factory = new TestWebApplicationFactory();
-        Scope = Factory.Services.CreateScope();
-        Context = Scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
-        UserManager = Scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-        RoleManager = Scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
-
-        // Clean database
-        await CleanDatabaseAsync();
-    }
-
-    [TearDown]
-    public virtual void TearDown()
-    {
-        UserManager?.Dispose();
-        RoleManager?.Dispose();
-        Scope.Dispose();
-        Factory.Dispose();
-    }
-
-    #pragma warning disable EF1002
-    protected async Task CleanDatabaseAsync()
-    {
-        // For SQLite database, recreate the database entirely
-        if (Context is ApplicationDbContext dbContext)
-        {
-            // Use raw SQL to delete all data from all tables in correct order (respecting FKs)
-            var tables = new[]
-            {
-                "\"auth\".\"RuleScopes\"",
-                "\"auth\".\"AccessRules\"",
-                "\"auth\".\"UserRoles\"",
-                "\"auth\".\"AuthPrincipals\"",
-                "\"auth\".\"PermissionImplications\"",
-                "\"auth\".\"Roles\"",
-                "\"auth\".\"Permissions\"",
-                "\"auth\".\"Resources\"",
-                "\"auth\".\"Applications\"",
-                "\"identity\".\"AspNetUserRoles\"",
-                "\"identity\".\"AspNetUserClaims\"",
-                "\"identity\".\"AspNetUserLogins\"",
-                "\"identity\".\"AspNetUserTokens\"",
-                "\"identity\".\"AspNetRoleClaims\"",
-                "\"identity\".\"AspNetRoles\"",
-                "\"identity\".\"AspNetUsers\"",
-                "\"org\".\"PersonnelPositions\"",
-                "\"org\".\"UserCompanies\"",
-                "\"org\".\"Personnel\"",
-                "\"org\".\"Positions\"",
-                "\"org\".\"Companies\"",
-            };
-            
-            foreach (var table in tables)
-            {
-                try
-                {
-                    await dbContext.Database.ExecuteSqlRawAsync($"DELETE FROM {table}");
-                }
-                catch
-                {
-                    // Table might not exist, ignore
-                }
-            }
-        }
-    }
-#pragma warning restore EF1002
-
-    protected async Task<ApplicationUser> CreateUserAsync(string email, string password, bool isActive = true)
-    {
-        var user = new ApplicationUser
-        {
-            UserName = email,
-            Email = email,
-            IsActive = isActive
-        };
-
-        var result = await UserManager.CreateAsync(user, password);
-        if (!result.Succeeded)
-            throw new Exception($"Failed to create user: {string.Join(", ", result.Errors.Select(e => e.Description))}");
-
-        return user;
-    }
-
-    protected async Task<Guid> CreateCompanyAsync(string code, string name)
-    {
-        var company = new Company(code, name);
-        Context.Companies.Add(company);
-        await Context.SaveChangesAsync(default);
-        return company.Id;
-    }
-
-    protected async Task<Guid> CreateApplicationAsync(string code, string name)
-    {
-        var app = new CompanyAccessManagement.Domain.AccessControl.Application(code, name);
-        Context.Applications.Add(app);
-        await Context.SaveChangesAsync(default);
-        return app.Id;
-    }
-
-    protected async Task<Guid> CreateResourceAsync(Guid applicationId, string code, string name)
-    {
-        var resource = new Resource(applicationId, code, name);
-        Context.Resources.Add(resource);
-        await Context.SaveChangesAsync(default);
-        return resource.Id;
-    }
-
-    protected async Task<Guid> CreatePermissionAsync(Guid resourceId, string actionCode, string description = "")
-    {
-        var permission = new Permission(resourceId, actionCode, description);
-        Context.Permissions.Add(permission);
-        await Context.SaveChangesAsync(default);
-        return permission.Id;
-    }
-
-    protected async Task<Role> CreateRoleAsync(Guid companyId, Guid applicationId, string name, string code, RoleKind kind = RoleKind.Standard, Guid? parentRoleId = null)
-    {
-        var role = new Role(companyId, applicationId, code, name, kind, parentRoleId);
-        Context.Roles.Add(role);
-        await Context.SaveChangesAsync(default);
-        return role;
-    }
-
-    protected async Task<UserCompany> CreateUserCompanyAsync(Guid userId, Guid companyId, Guid principalId)
-    {
-        var userCompany = new UserCompany(userId, companyId, principalId);
-        Context.UserCompanies.Add(userCompany);
-        await Context.SaveChangesAsync(default);
-        return userCompany;
-    }
-
-    protected async Task<UserRole> CreateUserRoleAsync(Guid userCompanyId, Guid roleId)
-    {
-        var userRole = new UserRole(userCompanyId, roleId);
-        Context.UserRoles.Add(userRole);
-        await Context.SaveChangesAsync(default);
-        return userRole;
-    }
-
-    protected async Task<AccessRule> CreateAccessRuleAsync(Guid principalId, Guid permissionId, AccessEffect effect, ScopeMode scopeMode = ScopeMode.None, string? scopeType = null, string? scopeKey = null, AccessRuleOrigin origin = AccessRuleOrigin.Manual)
-    {
-        var rule = new AccessRule(principalId, permissionId, effect, origin, scopeMode);
-        if (scopeMode == ScopeMode.Selected && !string.IsNullOrEmpty(scopeType) && !string.IsNullOrEmpty(scopeKey))
-        {
-            rule.AddScope(scopeType, scopeKey);
-        }
-        Context.AccessRules.Add(rule);
-        await Context.SaveChangesAsync(default);
-        return rule;
-    }
-
-    protected async Task<AuthPrincipal> CreateAuthPrincipalForUserCompanyAsync(Guid userCompanyId, Guid companyId, Guid applicationId)
-    {
-        var principal = new AuthPrincipal(PrincipalType.UserCompany, userCompanyId, companyId, applicationId);
-        Context.AuthPrincipals.Add(principal);
-        await Context.SaveChangesAsync(default);
-        return principal;
-    }
-
-    protected async Task<AuthPrincipal> CreateAuthPrincipalForRoleAsync(Guid roleId, Guid companyId, Guid applicationId)
-    {
-        var principal = new AuthPrincipal(PrincipalType.Role, roleId, companyId, applicationId);
-        Context.AuthPrincipals.Add(principal);
-        await Context.SaveChangesAsync(default);
-        return principal;
-    }
-
-    protected async Task CreatePermissionImplicationAsync(Guid permissionId, Guid requiredPermissionId)
-    {
-        // Check if implication already exists to avoid duplicate key errors
-        var exists = await Context.PermissionImplications
-            .AnyAsync(pi => pi.PermissionId == permissionId && pi.RequiredPermissionId == requiredPermissionId);
-        
-        if (!exists)
-        {
-            var implication = new PermissionImplication(permissionId, requiredPermissionId);
-            Context.PermissionImplications.Add(implication);
-            await Context.SaveChangesAsync(default);
-        }
-    }
-
-    protected async Task<(Guid CompanyId, Guid AppId, Guid ProductsReadPermId, Guid ProductsEditPermId, Guid ProductsDeletePermId)> SeedTestDataAsync()
-    {
-        // Create test company
-        var companyId = await CreateCompanyAsync("TEST", "Test Company");
-
-        // Create test application
-        var appId = await CreateApplicationAsync("QC", "Quality Control");
-
-        // Create resources and permissions
-        var productsResource = await CreateResourceAsync(appId, "Products", "Products");
-        var productsReadPermId = await CreatePermissionAsync(productsResource, "Read");
-        var productsEditPermId = await CreatePermissionAsync(productsResource, "Edit");
-        var productsDeletePermId = await CreatePermissionAsync(productsResource, "Delete");
-
-        var labResource = await CreateResourceAsync(appId, "Laboratory", "Laboratory");
-        var labRead = await CreatePermissionAsync(labResource, "Read");
-        var labApprove = await CreatePermissionAsync(labResource, "Approve");
-
-        // Create permission implication: Edit requires Read
-        await CreatePermissionImplicationAsync(productsEditPermId, productsReadPermId);
-
-        return (companyId, appId, productsReadPermId, productsEditPermId, productsDeletePermId);
-    }
-}
-
-public class TestWebApplicationFactory : WebApplicationFactory<Program>
-{
-    private readonly string _connectionString;
-
-    public TestWebApplicationFactory()
-    {
-        // Use a unique SQLite database per test factory instance
-        _connectionString = $"DataSource=file:test-{Guid.NewGuid()}?mode=memory&cache=shared;Foreign Keys=True";
-    }
-
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
-    {
-        builder.UseEnvironment("Testing");
-        
-        builder.ConfigureTestServices(services =>
-        {
-            // Remove the existing DbContext registration
-            var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>));
-            if (descriptor != null)
-                services.Remove(descriptor);
-
-            // Remove any EntityFrameworkCore.Sqlite services
-            var efCoreSqliteDescriptors = services.Where(d => d.ServiceType.FullName?.Contains("Microsoft.EntityFrameworkCore.Sqlite") == true).ToList();
-            foreach (var d in efCoreSqliteDescriptors)
-                services.Remove(d);
-
-            // Register dummy email sender for Identity API
-            services.AddSingleton<Microsoft.AspNetCore.Identity.IEmailSender<ApplicationUser>, DummyEmailSender>();
-
-            // Add Data Protection for Identity
-            services.AddDataProtection();
-
-            // Use SQLite in-memory database for tests with unique connection string
-            services.AddDbContext<ApplicationDbContext>(options =>
-            {
-                options.UseSqlite(_connectionString);
-            });
-
-            // Register Identity services
-            services.AddIdentityCore<ApplicationUser>()
-                .AddRoles<IdentityRole<Guid>>()
-                .AddEntityFrameworkStores<ApplicationDbContext>()
-                .AddDefaultTokenProviders();
-
-            // Register authentication services (required for UseAuthentication/UseAuthorization in pipeline)
-            services.AddAuthentication()
-                .AddBearerToken(IdentityConstants.BearerScheme);
-
-            services.AddAuthorizationBuilder();
-
-            // Register IApplicationDbContext
-            services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
-
-            // Register IAccessEvaluator
-            services.AddScoped<IAccessEvaluator, AccessEvaluator>();
-
-            // Register authorization policy provider and handler (for UseAuthorization in pipeline)
-            services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
-            services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
-
-            // Ensure the database is created
-            var sp = services.BuildServiceProvider();
-            using var scope = sp.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            db.Database.EnsureCreated();
-        });
-    }
-
-    // Dummy email sender for testing
-    private class DummyEmailSender : Microsoft.AspNetCore.Identity.IEmailSender<ApplicationUser>
-    {
-        public Task SendConfirmationLinkAsync(ApplicationUser user, string email, string confirmationLink)
-            => Task.CompletedTask;
-
-        public Task SendPasswordResetLinkAsync(ApplicationUser user, string email, string resetLink)
-            => Task.CompletedTask;
-
-        public Task SendPasswordResetCodeAsync(ApplicationUser user, string email, string resetCode)
-            => Task.CompletedTask;
     }
 }
