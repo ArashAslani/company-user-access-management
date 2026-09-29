@@ -34,7 +34,13 @@ public class GetPersonnelQueryHandler : IRequestHandler<GetPersonnelQuery, Pagin
             .AsQueryable();
 
         if (request.CompanyId.HasValue)
-            query = query.Where(p => p.Positions.Any(pp => pp.Position != null && pp.Position.CompanyId == request.CompanyId.Value));
+        {
+            var companyId = request.CompanyId.Value;
+            query = query.Where(p => _context.PersonnelPositions
+                .Where(pp => pp.PersonnelId == p.Id && pp.Status == PersonnelPositionStatus.Active)
+                .Join(_context.Positions, pp => pp.PositionId, pos => pos.Id, (pp, pos) => pos.CompanyId)
+                .Any(cid => cid == companyId));
+        }
 
         if (!string.IsNullOrWhiteSpace(request.Status) && Enum.TryParse<PersonnelStatus>(request.Status, true, out var status))
             query = query.Where(p => p.Status == status);

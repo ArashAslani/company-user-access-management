@@ -7,21 +7,23 @@ namespace CompanyAccessManagement.Application.Organization.Personnel.Commands;
 
 public record UpdatePositionAssignmentCommand : IRequest
 {
-    public Guid PersonnelId { get; set; }
-    public Guid PositionId { get; init; }
+    public Guid PersonnelId { get; init; }
+    public Guid AssignmentId { get; init; }
     public bool IsPrimary { get; init; }
     public DateTime EffectiveFrom { get; init; }
     public DateTime? EffectiveTo { get; init; }
-    public PersonnelPositionStatus Status { get; init; }
+    public PersonnelPositionStatus Status { get; init; } = PersonnelPositionStatus.Active;
 }
 
 public class UpdatePositionAssignmentCommandHandler : IRequestHandler<UpdatePositionAssignmentCommand>
 {
     private readonly IApplicationDbContext _context;
+    private readonly TimeProvider _timeProvider;
 
-    public UpdatePositionAssignmentCommandHandler(IApplicationDbContext context)
+    public UpdatePositionAssignmentCommandHandler(IApplicationDbContext context, TimeProvider timeProvider)
     {
         _context = context;
+        _timeProvider = timeProvider;
     }
 
     public async Task Handle(UpdatePositionAssignmentCommand request, CancellationToken cancellationToken)
@@ -30,35 +32,18 @@ public class UpdatePositionAssignmentCommandHandler : IRequestHandler<UpdatePosi
             .Include(p => p.Positions)
             .FirstOrDefaultAsync(p => p.Id == request.PersonnelId, cancellationToken);
 
-        if (personnel == null)
-            throw new InvalidOperationException("Personnel not found.");
+        Guard.Against.NotFound(request.PersonnelId, personnel);
 
-        // Find the assignment by PersonnelId + PositionId (composite key)
-        var assignment = personnel.Positions.FirstOrDefault(p => p.PositionId == request.PositionId);
-        if (assignment == null)
-            throw new InvalidOperationException("Position assignment not found.");
+        if (personnel.FindAssignment(request.AssignmentId) is null)
+            throw new NotFoundException(request.AssignmentId.ToString(), "PersonnelPosition");
 
-        // Check for overlap with other assignments for the same position
-        if (personnel.Positions.Any(p => p.PositionId == assignment.PositionId && p.PersonnelId != assignment.PersonnelId && p.HasOverlap(request.EffectiveFrom, request.EffectiveTo)))
-            throw new InvalidOperationException("Effective window overlaps with existing assignment for this position.");
-
-        if (request.IsPrimary)
-        {
-            if (personnel.Positions.Any(p => p.IsPrimary && p.Position?.CompanyId != null && p.IsCurrentlyEffective() && p.HasOverlap(request.EffectiveFrom, request.EffectiveTo)))
-                throw new InvalidOperationException("PRIMARY_OVERLAP_CONFLICT");
-        }
-
-        // Check if sealed
-        var now = DateTime.UtcNow;
-        if (now > (assignment.EffectiveTo ?? DateTime.MaxValue))
-            throw new InvalidOperationException("SEALED_RECORD");
-
-        personnel.UpdatePositionEffectiveWindow(request.PositionId, request.EffectiveFrom, request.EffectiveTo);
-
-        if (request.IsPrimary != assignment.IsPrimary)
-            personnel.SetPrimaryPosition(assignment.PositionId);
-
-        assignment.SetStatus(request.Status);
+        personnel.UpdatePositionAssignment(
+            request.AssignmentId,
+            request.IsPrimary,
+            request.EffectiveFrom,
+            request.EffectiveTo,
+            request.Status,
+            _timeProvider.GetUtcNow().UtcDateTime);
 
         await _context.SaveChangesAsync(cancellationToken);
     }

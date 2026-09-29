@@ -10,7 +10,10 @@ public class PersonnelPositionConfiguration : IEntityTypeConfiguration<Personnel
     {
         builder.ToTable("PersonnelPositions", "org");
 
-        builder.HasKey(pp => new { pp.PersonnelId, pp.PositionId });
+        builder.HasKey(pp => pp.Id);
+        builder.Property(pp => pp.Id).ValueGeneratedNever();
+
+        builder.HasIndex(pp => new { pp.PersonnelId, pp.PositionId, pp.EffectiveFrom }).IsUnique();
 
         builder.Property(pp => pp.IsPrimary).IsRequired();
         builder.Property(pp => pp.Status).IsRequired().HasConversion<int>();

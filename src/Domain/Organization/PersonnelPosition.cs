@@ -18,36 +18,26 @@ public sealed class PersonnelPosition : BaseEntity
 
     private PersonnelPosition() { }
 
-    public PersonnelPosition(Guid personnelId, Guid positionId, bool isPrimary, DateTime effectiveFrom, DateTime? effectiveTo = null)
+    internal PersonnelPosition(Guid personnelId, Guid positionId, bool isPrimary, DateTime effectiveFrom, DateTime? effectiveTo, DateTime createdAt)
     {
+        EnsureValidWindow(effectiveFrom, effectiveTo);
+
+        Id = Guid.NewGuid();
         PersonnelId = personnelId;
         PositionId = positionId;
         IsPrimary = isPrimary;
         Status = PersonnelPositionStatus.Active;
         EffectiveFrom = effectiveFrom;
         EffectiveTo = effectiveTo;
-        CreatedAt = DateTime.UtcNow;
+        CreatedAt = createdAt;
     }
 
-    public void SetPrimary(bool isPrimary)
-    {
-        IsPrimary = isPrimary;
-    }
+    public bool IsActive => Status == PersonnelPositionStatus.Active;
 
-    public void SetStatus(PersonnelPositionStatus status, DateTime? deactivatedAt = null)
-    {
-        Status = status;
-        if (status == PersonnelPositionStatus.Inactive && deactivatedAt.HasValue)
-        {
-            DeactivatedAt = deactivatedAt;
-        }
-    }
+    /// <summary>An assignment whose window has already ended is historical and can no longer be changed.</summary>
+    public bool IsSealed(DateTime now) => EffectiveTo.HasValue && now > EffectiveTo.Value;
 
-    public void UpdateEffectiveWindow(DateTime effectiveFrom, DateTime? effectiveTo)
-    {
-        EffectiveFrom = effectiveFrom;
-        EffectiveTo = effectiveTo;
-    }
+    public bool HasStarted(DateTime now) => EffectiveFrom <= now;
 
     public bool IsCurrentlyEffective(DateTime? at = null)
     {
@@ -63,6 +53,36 @@ public sealed class PersonnelPosition : BaseEntity
         var thisEnd = EffectiveTo ?? DateTime.MaxValue;
 
         return EffectiveFrom < otherEnd && otherEffectiveFrom < thisEnd;
+    }
+
+    internal void SetPrimary(bool isPrimary)
+    {
+        IsPrimary = isPrimary;
+    }
+
+    internal void Activate()
+    {
+        Status = PersonnelPositionStatus.Active;
+        DeactivatedAt = null;
+    }
+
+    internal void Deactivate(DateTime deactivatedAt)
+    {
+        Status = PersonnelPositionStatus.Inactive;
+        DeactivatedAt = deactivatedAt;
+    }
+
+    internal void UpdateEffectiveWindow(DateTime effectiveFrom, DateTime? effectiveTo)
+    {
+        EnsureValidWindow(effectiveFrom, effectiveTo);
+        EffectiveFrom = effectiveFrom;
+        EffectiveTo = effectiveTo;
+    }
+
+    private static void EnsureValidWindow(DateTime effectiveFrom, DateTime? effectiveTo)
+    {
+        if (effectiveTo.HasValue && effectiveTo.Value <= effectiveFrom)
+            throw new DomainRuleViolationException("INVALID_EFFECTIVE_WINDOW", "EffectiveTo must be later than EffectiveFrom.");
     }
 }
 

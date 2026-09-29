@@ -65,23 +65,24 @@ public sealed class PersonnelEndpoints : IEndpointGroup
             AssignPositionCommand command,
             ISender sender) =>
         {
-            await sender.Send(command with { PersonnelId = id });
-            return Results.Ok();
+            var assignmentId = await sender.Send(command with { PersonnelId = id });
+            return Results.Created($"/api/v1/organization/personnel/{id}/positions/{assignmentId}", new { id = assignmentId });
         })
         .RequirePermission("Organization.PersonnelPosition.Create")
         .WithName("AssignPosition")
-        .Produces(StatusCodes.Status200OK)
+        .Produces<Guid>(StatusCodes.Status201Created)
+        .ProducesProblem(StatusCodes.Status404NotFound)
         .ProducesProblem(StatusCodes.Status400BadRequest)
         .ProducesProblem(StatusCodes.Status409Conflict);
 
         // 2.4 Update position assignment
-        group.MapPut("/{personnelId:guid}/positions/{positionId:guid}", async (
+        group.MapPut("/{personnelId:guid}/positions/{assignmentId:guid}", async (
             Guid personnelId,
-            Guid positionId,
+            Guid assignmentId,
             UpdatePositionAssignmentCommand command,
             ISender sender) =>
         {
-            await sender.Send(command with { PersonnelId = personnelId, PositionId = positionId });
+            await sender.Send(command with { PersonnelId = personnelId, AssignmentId = assignmentId });
             return Results.Ok();
         })
         .RequirePermission("Organization.PersonnelPosition.Edit")
@@ -92,18 +93,19 @@ public sealed class PersonnelEndpoints : IEndpointGroup
         .ProducesProblem(StatusCodes.Status404NotFound);
 
         // 2.5 Remove position assignment
-        group.MapDelete("/{personnelId:guid}/positions/{positionId:guid}", async (
+        group.MapDelete("/{personnelId:guid}/positions/{assignmentId:guid}", async (
             Guid personnelId,
-            Guid positionId,
+            Guid assignmentId,
             ISender sender) =>
         {
-            await sender.Send(new RemovePositionAssignmentCommand { PersonnelId = personnelId, PositionId = positionId });
+            await sender.Send(new RemovePositionAssignmentCommand { PersonnelId = personnelId, AssignmentId = assignmentId });
             return Results.NoContent();
         })
         .RequirePermission("Organization.PersonnelPosition.Delete")
         .WithName("RemovePositionAssignment")
         .Produces(StatusCodes.Status204NoContent)
-        .ProducesProblem(StatusCodes.Status404NotFound);
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status409Conflict);
 
         // 2.7 Upload/replace signature
         group.MapPost("/{id:guid}/signature", async (

@@ -1,4 +1,5 @@
 using CompanyAccessManagement.Application.Common.Exceptions;
+using CompanyAccessManagement.Domain.Common;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 
@@ -8,7 +9,7 @@ namespace CompanyAccessManagement.Web.Infrastructure;
 /// Converts well-known application exceptions into RFC 9110-compliant <see cref="ProblemDetails"/> responses,
 /// mapping <see cref="ValidationException"/> → 400, <see cref="NotFoundException"/> → 404,
 /// <see cref="UnauthorizedAccessException"/> → 401, <see cref="ForbiddenAccessException"/> → 403,
-/// and <see cref="ConflictException"/> → 409.
+/// and <see cref="ConflictException"/> / <see cref="DomainRuleViolationException"/> → 409.
 /// Unrecognised exceptions are not handled and fall through to the default middleware.
 /// </summary>
 public class ProblemDetailsExceptionHandler : IExceptionHandler
@@ -47,6 +48,14 @@ public class ProblemDetailsExceptionHandler : IExceptionHandler
                 Title = "Conflict",
                 Type = "https://tools.ietf.org/html/rfc9110#section-15.5.6",
                 Detail = ce.Message
+            }),
+            DomainRuleViolationException de => (StatusCodes.Status409Conflict, new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Business rule violation",
+                Type = "https://tools.ietf.org/html/rfc9110#section-15.5.10",
+                Detail = de.Message,
+                Extensions = { ["code"] = de.Code }
             }),
             _ => (-1, null)
         };

@@ -87,7 +87,7 @@ public class PersonnelApiTests : ApiTestBase
         };
 
         var assignResponse = await session.Client.PostAsJsonAsync($"/api/v1/organization/personnel/{personnelId}/positions", assignCommand);
-        assignResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+        assignResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         // Verify via API
         var url = $"/api/v1/organization/personnel/?companyId={_companyId}";
@@ -197,7 +197,7 @@ public class PersonnelApiTests : ApiTestBase
     }
 
     [Test]
-    public async Task AssignPosition_WithValidData_ReturnsOk()
+    public async Task AssignPosition_WithValidData_ReturnsCreatedWithAssignmentId()
     {
         var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.Position.Create", "Organization.PersonnelPosition.Create");
 
@@ -244,7 +244,12 @@ public class PersonnelApiTests : ApiTestBase
         };
 
         var assignResponse = await session.Client.PostAsJsonAsync($"/api/v1/organization/personnel/{personnelId}/positions", assignCommand);
-        assignResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+        assignResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        var result = await assignResponse.Content.ReadFromJsonAsync<IdResponse>();
+        result!.Id.ShouldNotBe(Guid.Empty);
+        await WithDbAsync(async db =>
+            (await db.PersonnelPositions.AsNoTracking().SingleAsync(pp => pp.Id == result.Id)).PersonnelId.ShouldBe(personnelId));
     }
 
     [Test]
@@ -295,9 +300,10 @@ public class PersonnelApiTests : ApiTestBase
         };
 
         var assignResponse = await session.Client.PostAsJsonAsync($"/api/v1/organization/personnel/{personnelId}/positions", assignCommand);
-        assignResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+        assignResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
 
-        var response = await session.Client.DeleteAsync($"/api/v1/organization/personnel/{personnelId}/positions/{positionId}");
+        var assignment = await assignResponse.Content.ReadFromJsonAsync<IdResponse>();
+        var response = await session.Client.DeleteAsync($"/api/v1/organization/personnel/{personnelId}/positions/{assignment!.Id}");
 
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
     }
@@ -384,5 +390,131 @@ public class PersonnelApiTests : ApiTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
     }
 
+    [Test]
+    public async Task UpdatePositionAssignment_TargetsTheGivenAssignmentId()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.Position.Create", "Organization.PersonnelPosition.Create", "Organization.PersonnelPosition.Edit");
+        var personnelId = await CreatePersonnelAsync(session.Client, "1111111111");
+        var positionId = await CreatePositionAsync(session.Client, "UPDPOS");
+
+        var first = await AssignAsync(session.Client, personnelId, positionId, DateTime.UtcNow.AddDays(1), DateTime.UtcNow.AddDays(10));
+        var second = await AssignAsync(session.Client, personnelId, positionId, DateTime.UtcNow.AddDays(20), DateTime.UtcNow.AddDays(30));
+
+        var newTo = DateTime.UtcNow.AddDays(45);
+        var response = await session.Client.PutAsJsonAsync(
+            $"/api/v1/organization/personnel/{personnelId}/positions/{second}",
+            new { IsPrimary = false, EffectiveFrom = DateTime.UtcNow.AddDays(20), EffectiveTo = newTo, Status = 0 });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        await WithDbAsync(async db =>
+        {
+            var rows = await db.PersonnelPositions.AsNoTracking().Where(pp => pp.PersonnelId == personnelId).ToListAsync();
+            rows.Single(r => r.Id == second).EffectiveTo!.Value.Date.ShouldBe(newTo.Date);
+            rows.Single(r => r.Id == first).EffectiveTo!.Value.Date.ShouldBe(DateTime.UtcNow.AddDays(10).Date);
+        });
+    }
+
+    [Test]
+    public async Task UpdatePositionAssignment_OverlappingSibling_ReturnsConflictWithCode()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.Position.Create", "Organization.PersonnelPosition.Create", "Organization.PersonnelPosition.Edit");
+        var personnelId = await CreatePersonnelAsync(session.Client, "2222222222");
+        var positionId = await CreatePositionAsync(session.Client, "OVLPOS");
+
+        await AssignAsync(session.Client, personnelId, positionId, DateTime.UtcNow.AddDays(1), DateTime.UtcNow.AddDays(10));
+        var second = await AssignAsync(session.Client, personnelId, positionId, DateTime.UtcNow.AddDays(20), DateTime.UtcNow.AddDays(30));
+
+        var response = await session.Client.PutAsJsonAsync(
+            $"/api/v1/organization/personnel/{personnelId}/positions/{second}",
+            new { IsPrimary = false, EffectiveFrom = DateTime.UtcNow.AddDays(5), EffectiveTo = DateTime.UtcNow.AddDays(30), Status = 0 });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("ASSIGNMENT_OVERLAP");
+    }
+
+    [Test]
+    public async Task AssignPosition_Overlapping_ReturnsConflictWithCode()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.Position.Create", "Organization.PersonnelPosition.Create");
+        var personnelId = await CreatePersonnelAsync(session.Client, "3333333333");
+        var positionId = await CreatePositionAsync(session.Client, "DUPPOS");
+
+        await AssignAsync(session.Client, personnelId, positionId, DateTime.UtcNow.AddDays(-5), DateTime.UtcNow.AddDays(5));
+
+        var response = await session.Client.PostAsJsonAsync(
+            $"/api/v1/organization/personnel/{personnelId}/positions",
+            new { PositionId = positionId, IsPrimary = false, EffectiveFrom = DateTime.UtcNow.AddDays(-1), EffectiveTo = (DateTime?)null });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("ASSIGNMENT_OVERLAP");
+    }
+
+    [Test]
+    public async Task RemovePositionAssignment_BelongingToOtherPersonnel_ReturnsNotFound()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.Position.Create", "Organization.PersonnelPosition.Create", "Organization.PersonnelPosition.Delete");
+        var owner = await CreatePersonnelAsync(session.Client, "4444444444");
+        var other = await CreatePersonnelAsync(session.Client, "5555555555");
+        var positionId = await CreatePositionAsync(session.Client, "OWNPOS");
+
+        var assignmentId = await AssignAsync(session.Client, owner, positionId, DateTime.UtcNow.AddDays(-1), null);
+
+        var response = await session.Client.DeleteAsync($"/api/v1/organization/personnel/{other}/positions/{assignmentId}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        await WithDbAsync(async db =>
+            (await db.PersonnelPositions.AsNoTracking().SingleAsync(pp => pp.Id == assignmentId)).Status.ShouldBe(PersonnelPositionStatus.Active));
+    }
+
+    [Test]
+    public async Task RemovePositionAssignment_EndedAssignment_ReturnsSealedConflict()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.Position.Create", "Organization.PersonnelPosition.Create", "Organization.PersonnelPosition.Delete");
+        var personnelId = await CreatePersonnelAsync(session.Client, "6666666666");
+        var positionId = await CreatePositionAsync(session.Client, "OLDPOS");
+
+        var assignmentId = await AssignAsync(session.Client, personnelId, positionId, DateTime.UtcNow.AddDays(-20), DateTime.UtcNow.AddDays(-10));
+
+        var response = await session.Client.DeleteAsync($"/api/v1/organization/personnel/{personnelId}/positions/{assignmentId}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("SEALED_RECORD");
+    }
+
+    private async Task<Guid> CreatePersonnelAsync(HttpClient client, string nationalCode)
+    {
+        var response = await client.PostAsJsonAsync("/api/v1/organization/personnel", new
+        {
+            NationalCode = nationalCode,
+            FirstName = "Test",
+            LastName = "Person",
+            Gender = 1
+        });
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        return (await response.Content.ReadFromJsonAsync<IdResponse>())!.Id;
+    }
+
+    private async Task<Guid> CreatePositionAsync(HttpClient client, string code)
+    {
+        var response = await client.PostAsJsonAsync("/api/v1/organization/positions", new
+        {
+            CompanyId = _companyId,
+            Code = code,
+            Title = code
+        });
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        return (await response.Content.ReadFromJsonAsync<IdResponse>())!.Id;
+    }
+
+    private static async Task<Guid> AssignAsync(HttpClient client, Guid personnelId, Guid positionId, DateTime from, DateTime? to, bool isPrimary = false)
+    {
+        var response = await client.PostAsJsonAsync(
+            $"/api/v1/organization/personnel/{personnelId}/positions",
+            new { PositionId = positionId, IsPrimary = isPrimary, EffectiveFrom = from, EffectiveTo = to });
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        return (await response.Content.ReadFromJsonAsync<IdResponse>())!.Id;
+    }
+
+    private record IdResponse(Guid Id);
     private record CreatePersonnelResponse(Guid Id);
 }

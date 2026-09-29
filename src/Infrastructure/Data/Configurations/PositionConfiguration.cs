@@ -26,10 +26,5 @@ public class PositionConfiguration : IEntityTypeConfiguration<Position>
             .WithMany(p => p.Children)
             .HasForeignKey(p => p.ParentPositionId)
             .OnDelete(DeleteBehavior.Restrict);
-
-        builder.HasMany(p => p.Assignments)
-            .WithOne()
-            .HasForeignKey(pp => pp.PositionId)
-            .OnDelete(DeleteBehavior.Cascade);
     }
 }

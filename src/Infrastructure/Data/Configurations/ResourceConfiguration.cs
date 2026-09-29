@@ -30,10 +30,5 @@ public class ResourceConfiguration : IEntityTypeConfiguration<Resource>
             .WithMany(r => r.Children)
             .HasForeignKey(r => r.ParentResourceId)
             .OnDelete(DeleteBehavior.Restrict);
-
-        builder.HasMany(r => r.Permissions)
-            .WithOne()
-            .HasForeignKey(p => p.ResourceId)
-            .OnDelete(DeleteBehavior.Cascade);
     }
 }

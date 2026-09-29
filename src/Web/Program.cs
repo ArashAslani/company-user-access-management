@@ -10,16 +10,13 @@ builder.AddServiceDefaults();
 
 builder.AddKeyVaultIfConfigured();
 builder.AddApplicationServices();
-
-// Add infrastructure services for all environments except "Testing" (unit tests use their own setup)
-if (!builder.Environment.IsEnvironment("Testing"))
-{
-    builder.AddInfrastructureServices();
-}
-
+builder.AddInfrastructureServices();
 builder.AddWebServices();
 
 var app = builder.Build();
+
+// ProblemDetailsExceptionHandler maps NotFoundException to 404, which must not be treated as a misconfigured handler.
+app.UseExceptionHandler(new ExceptionHandlerOptions { AllowStatusCode404Response = true });
 
 // Configure the HTTP request pipeline.
 // For TestIntegration and Development, initialize database
@@ -65,8 +62,6 @@ app.UseAuthorization();
 
 app.MapOpenApi();
 app.MapScalarApiReference();
-
-app.UseExceptionHandler(options => { });
 
 app.Map("/", () => Results.Redirect("/scalar"));
 

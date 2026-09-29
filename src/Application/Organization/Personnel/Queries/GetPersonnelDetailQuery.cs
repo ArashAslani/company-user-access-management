@@ -44,10 +44,11 @@ public class GetPersonnelDetailQueryHandler : IRequestHandler<GetPersonnelDetail
             CompanyId = personnel.Positions.FirstOrDefault(pp => pp.Position != null && pp.IsCurrentlyEffective())?.Position?.CompanyId ?? Guid.Empty,
             Status = personnel.Status,
             Positions = personnel.Positions
-                .Where(p => p.IsCurrentlyEffective())
+                .Where(p => p.IsActive)
+                .OrderBy(p => p.EffectiveFrom)
                 .Select(p => new PersonnelPositionDto
                 {
-                    PersonnelPositionId = p.PersonnelId,
+                    PersonnelPositionId = p.Id,
                     PositionId = p.PositionId,
                     PositionCode = p.Position?.Code ?? string.Empty,
                     PositionTitle = p.Position?.Title ?? string.Empty,

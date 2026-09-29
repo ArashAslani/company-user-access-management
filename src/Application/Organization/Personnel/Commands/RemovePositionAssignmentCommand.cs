@@ -1,5 +1,4 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
-using CompanyAccessManagement.Domain.Organization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,16 +7,18 @@ namespace CompanyAccessManagement.Application.Organization.Personnel.Commands;
 public record RemovePositionAssignmentCommand : IRequest
 {
     public Guid PersonnelId { get; init; }
-    public Guid PositionId { get; init; }
+    public Guid AssignmentId { get; init; }
 }
 
 public class RemovePositionAssignmentCommandHandler : IRequestHandler<RemovePositionAssignmentCommand>
 {
     private readonly IApplicationDbContext _context;
+    private readonly TimeProvider _timeProvider;
 
-    public RemovePositionAssignmentCommandHandler(IApplicationDbContext context)
+    public RemovePositionAssignmentCommandHandler(IApplicationDbContext context, TimeProvider timeProvider)
     {
         _context = context;
+        _timeProvider = timeProvider;
     }
 
     public async Task Handle(RemovePositionAssignmentCommand request, CancellationToken cancellationToken)
@@ -26,25 +27,12 @@ public class RemovePositionAssignmentCommandHandler : IRequestHandler<RemovePosi
             .Include(p => p.Positions)
             .FirstOrDefaultAsync(p => p.Id == request.PersonnelId, cancellationToken);
 
-        if (personnel == null)
-            throw new InvalidOperationException("Personnel not found.");
+        Guard.Against.NotFound(request.PersonnelId, personnel);
 
-        // Find the assignment by PersonnelId + PositionId (composite key)
-        var assignment = personnel.Positions.FirstOrDefault(p => p.PositionId == request.PositionId);
-        if (assignment == null)
-            throw new InvalidOperationException("Position assignment not found.");
+        if (personnel.FindAssignment(request.AssignmentId) is null)
+            throw new NotFoundException(request.AssignmentId.ToString(), "PersonnelPosition");
 
-        // Check if sealed
-        var now = DateTime.UtcNow;
-        if (now > (assignment.EffectiveTo ?? DateTime.MaxValue))
-            throw new InvalidOperationException("SEALED_RECORD");
-
-        // Soft delete
-        assignment.SetStatus(PersonnelPositionStatus.Inactive, now);
-
-        // If this was the primary and there are no more effective positions, revert to Draft
-        if (!personnel.Positions.Any(p => p.IsCurrentlyEffective()))
-            personnel.SetStatus(PersonnelStatus.Draft);
+        personnel.RemovePositionAssignment(request.AssignmentId, _timeProvider.GetUtcNow().UtcDateTime);
 
         await _context.SaveChangesAsync(cancellationToken);
     }

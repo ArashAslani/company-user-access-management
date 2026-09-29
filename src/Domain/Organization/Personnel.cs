@@ -47,83 +47,84 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         Status = status;
     }
 
-    public void AssignPosition(Guid positionId, bool isPrimary, DateTime effectiveFrom, DateTime? effectiveTo = null)
+    public PersonnelPosition AssignPosition(Guid positionId, bool isPrimary, DateTime effectiveFrom, DateTime? effectiveTo, DateTime now)
     {
-        var now = DateTime.UtcNow;
+        EnsureNoOverlapOnSamePosition(positionId, effectiveFrom, effectiveTo, excludeAssignmentId: null);
 
-        if (_positions.Any(p => p.PositionId == positionId && p.IsCurrentlyEffective()))
-            throw new InvalidOperationException("Personnel already has an effective assignment to this position.");
-
-        if (_positions.Any(p => p.PositionId == positionId && p.HasOverlap(effectiveFrom, effectiveTo)))
-            throw new InvalidOperationException("Effective window overlaps with existing assignment for this position.");
-
-        if (isPrimary)
-        {
-            if (_positions.Any(p => p.IsPrimary && p.Position?.CompanyId != null && p.IsCurrentlyEffective() && p.HasOverlap(effectiveFrom, effectiveTo)))
-                throw new InvalidOperationException("Primary overlap conflict: another primary assignment is effective in the same window.");
-        }
-
-        var assignment = new PersonnelPosition(Id, positionId, isPrimary, effectiveFrom, effectiveTo);
+        var assignment = new PersonnelPosition(Id, positionId, isPrimary, effectiveFrom, effectiveTo, now);
         _positions.Add(assignment);
 
-        if (isPrimary)
-        {
-            foreach (var other in _positions.Where(p => p.PositionId != positionId && p.IsPrimary && p.HasOverlap(effectiveFrom, effectiveTo)))
-                other.SetPrimary(false);
-        }
-
-        if (Status == PersonnelStatus.Draft && _positions.Any(p => p.IsCurrentlyEffective()))
+        if (Status == PersonnelStatus.Draft && _positions.Any(p => p.IsCurrentlyEffective(now)))
             Status = PersonnelStatus.Employed;
 
         AddDomainEvent(new PersonnelPositionAssignedEvent(Id, positionId, isPrimary));
+        return assignment;
     }
 
-    public void RemovePosition(Guid positionId, DateTime endedAt)
+    public void UpdatePositionAssignment(Guid assignmentId, bool isPrimary, DateTime effectiveFrom, DateTime? effectiveTo, PersonnelPositionStatus status, DateTime now)
     {
-        var assignment = _positions.FirstOrDefault(p => p.PositionId == positionId && p.IsCurrentlyEffective());
-        if (assignment is null)
-            throw new InvalidOperationException("Active position assignment not found.");
+        var assignment = GetAssignment(assignmentId);
+        EnsureNotSealed(assignment, now);
 
-        assignment.SetStatus(PersonnelPositionStatus.Inactive, endedAt);
-        AddDomainEvent(new PersonnelPositionRemovedEvent(Id, positionId));
+        if (assignment.HasStarted(now) && effectiveFrom != assignment.EffectiveFrom)
+            throw new DomainRuleViolationException("EFFECTIVE_FROM_LOCKED", "EffectiveFrom cannot be changed after the assignment has started.");
+
+        if (status == PersonnelPositionStatus.Active)
+            EnsureNoOverlapOnSamePosition(assignment.PositionId, effectiveFrom, effectiveTo, excludeAssignmentId: assignment.Id);
+
+        var primaryChanged = assignment.IsPrimary != isPrimary;
+
+        assignment.UpdateEffectiveWindow(effectiveFrom, effectiveTo);
+        assignment.SetPrimary(isPrimary);
+
+        if (status == PersonnelPositionStatus.Active)
+            assignment.Activate();
+        else if (assignment.IsActive)
+            assignment.Deactivate(now);
+
+        if (primaryChanged)
+            AddDomainEvent(new PrimaryPositionChangedEvent(Id, assignment.PositionId));
     }
 
-    public void SetPrimaryPosition(Guid positionId, DateTime? effectiveFrom = null, DateTime? effectiveTo = null)
+    public void RemovePositionAssignment(Guid assignmentId, DateTime now)
     {
-        var target = _positions.FirstOrDefault(p => p.PositionId == positionId);
-        if (target is null)
-            throw new InvalidOperationException("Position assignment not found.");
+        var assignment = GetAssignment(assignmentId);
+        EnsureNotSealed(assignment, now);
 
-        var now = DateTime.UtcNow;
-        var from = effectiveFrom ?? target.EffectiveFrom;
-        var to = effectiveTo ?? target.EffectiveTo;
+        if (!assignment.IsActive)
+            throw new DomainRuleViolationException("ASSIGNMENT_INACTIVE", "The position assignment is already inactive.");
 
-        if (_positions.Any(p => p.PositionId != positionId && p.IsPrimary && p.Position?.CompanyId != null && p.IsCurrentlyEffective() && p.HasOverlap(from, to)))
-            throw new InvalidOperationException("Primary overlap conflict: another primary assignment is effective in the same window.");
+        assignment.Deactivate(now);
 
-        foreach (var p in _positions.Where(p => p.PositionId != positionId && p.IsPrimary && p.Position?.CompanyId != null && p.HasOverlap(from, to)))
-            p.SetPrimary(false);
+        if (Status == PersonnelStatus.Employed && !_positions.Any(p => p.IsCurrentlyEffective(now)))
+            Status = PersonnelStatus.Draft;
 
-        target.SetPrimary(true);
-        AddDomainEvent(new PrimaryPositionChangedEvent(Id, positionId));
+        AddDomainEvent(new PersonnelPositionRemovedEvent(Id, assignment.PositionId));
     }
 
-    public void UpdatePositionEffectiveWindow(Guid positionId, DateTime effectiveFrom, DateTime? effectiveTo)
+    public PersonnelPosition? FindAssignment(Guid assignmentId) => _positions.FirstOrDefault(p => p.Id == assignmentId);
+
+    private PersonnelPosition GetAssignment(Guid assignmentId)
     {
-        var target = _positions.FirstOrDefault(p => p.PositionId == positionId);
-        if (target is null)
-            throw new InvalidOperationException("Position assignment not found.");
+        return FindAssignment(assignmentId)
+            ?? throw new DomainRuleViolationException("ASSIGNMENT_NOT_FOUND", "Position assignment not found for this personnel.");
+    }
 
-        if (_positions.Any(p => p.PositionId != positionId && p.HasOverlap(effectiveFrom, effectiveTo)))
-            throw new InvalidOperationException("Effective window overlaps with another assignment for this position.");
+    private static void EnsureNotSealed(PersonnelPosition assignment, DateTime now)
+    {
+        if (assignment.IsSealed(now))
+            throw new DomainRuleViolationException("SEALED_RECORD", "Ended position assignments are historical records and cannot be changed.");
+    }
 
-        if (target.IsPrimary)
+    private void EnsureNoOverlapOnSamePosition(Guid positionId, DateTime effectiveFrom, DateTime? effectiveTo, Guid? excludeAssignmentId)
+    {
+        if (_positions.Any(p => p.PositionId == positionId
+                && p.IsActive
+                && p.Id != excludeAssignmentId
+                && p.HasOverlap(effectiveFrom, effectiveTo)))
         {
-            if (_positions.Any(p => p.PositionId != positionId && p.IsPrimary && p.Position?.CompanyId != null && p.HasOverlap(effectiveFrom, effectiveTo)))
-                throw new InvalidOperationException("Primary overlap conflict: another primary assignment is effective in the same window.");
+            throw new DomainRuleViolationException("ASSIGNMENT_OVERLAP", "The effective window overlaps an active assignment to the same position.");
         }
-
-        target.UpdateEffectiveWindow(effectiveFrom, effectiveTo);
     }
 
     public PersonnelSignature UploadSignature(byte[] content, string mimeType, string contentHash, Guid uploadedByUserId)

@@ -289,7 +289,7 @@ public class PositionApiTests : ApiTestBase
         };
 
         var assignResponse = await session.Client.PostAsJsonAsync($"/api/v1/organization/personnel/{personnelId}/positions", assignCommand);
-        assignResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+        assignResponse.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         var response = await session.Client.DeleteAsync($"/api/v1/organization/positions/{positionId}");
 
