@@ -14,6 +14,8 @@ namespace CompanyAccessManagement.Infrastructure.Authorization;
 /// <item>For a directly assigned role R, ALLOWs come from R and its descendants (Role Up); DENYs on the path from the
 /// origin role to R and on every ancestor of R block that branch only (Role Down, branch-local DENY).</item>
 /// <item>Prerequisites must not be denied on the candidate's path and must themselves be effectively allowed.</item>
+/// <item>Inactive or expired roles (including super-admin roles) grant nothing; a delegation is valid only while the delegator,
+/// as an active member of the request company, is allowed the permission without counting delegations.</item>
 /// </list>
 /// </summary>
 public class AccessEvaluator : IAccessEvaluator
@@ -77,6 +79,7 @@ public class AccessEvaluator : IAccessEvaluator
                       from ur in uc.Roles
                       join r in _context.Roles on ur.RoleId equals r.Id
                       where r.Kind == RoleKind.GlobalSuperAdmin && r.Status == RoleStatus.Active
+                          && (r.ValidUntil == null || r.ValidUntil > now)
                       select (Guid?)r.Id).FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -179,7 +182,7 @@ public class AccessEvaluator : IAccessEvaluator
         {
             foreach (var roleId in subject.RoleIds)
             {
-                if (_roles.TryGet(roleId, out var role) && role.Kind == RoleKind.CompanySuperAdmin && role.Status == RoleStatus.Active)
+                if (_roles.TryGet(roleId, out var role) && role.Kind == RoleKind.CompanySuperAdmin && CanGrant(role))
                     return role.Id;
             }
 
@@ -228,21 +231,21 @@ public class AccessEvaluator : IAccessEvaluator
             foreach (var rule in directRules.Where(r => IsAllowFor(r, permissionId) && r.Origin != AccessRuleOrigin.Delegated))
                 candidates.Add(new RuleCandidate(rule, CandidateSource.DirectUser, null, null, new HashSet<Guid>()));
 
-            foreach (var branchRoleId in subject.RoleIds.Where(id => _roles.TryGet(id, out _)))
+            foreach (var branchRoleId in subject.RoleIds.Where(id => _roles.TryGet(id, out var branch) && CanGrant(branch)))
             {
                 var ancestors = _roles.Ancestors(branchRoleId);
 
                 foreach (var originRoleId in _roles.SelfAndDescendants(branchRoleId))
                 {
-                    _roles.TryGet(originRoleId, out var origin);
-                    if (!CanGrant(origin))
+                    var grantPath = _roles.PathUpTo(originRoleId, branchRoleId);
+                    if (!grantPath.All(id => _roles.TryGet(id, out var node) && CanGrant(node)))
                         continue;
 
                     foreach (var principalId in _principalsByRole[originRoleId])
                     {
                         foreach (var rule in _roleRulesByPrincipal[principalId].Where(r => IsAllowFor(r, permissionId)))
                         {
-                            var path = new HashSet<Guid>(_roles.PathUpTo(originRoleId, branchRoleId));
+                            var path = new HashSet<Guid>(grantPath);
                             path.UnionWith(ancestors);
                             candidates.Add(new RuleCandidate(rule, CandidateSource.RoleBranch, branchRoleId, originRoleId, path));
                         }
@@ -309,7 +312,9 @@ public class AccessEvaluator : IAccessEvaluator
             return source.Allowed;
         }
 
-        private static bool CanGrant(RoleNode role) => true;
+        /// <summary>Inactive or expired roles grant nothing, but their DENY rules still apply.</summary>
+        private bool CanGrant(RoleNode role)
+            => role.Status == RoleStatus.Active && (role.ValidUntil is null || role.ValidUntil > _now);
 
         private bool HasRoleDeny(IReadOnlySet<Guid> pathRoleIds, Func<Guid, bool> permissionMatches)
         {

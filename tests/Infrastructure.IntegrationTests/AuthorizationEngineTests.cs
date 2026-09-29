@@ -388,7 +388,7 @@ public class AuthorizationEngineTests : TestBase
     }
 
     [Test]
-    public async Task EvaluateAsync_DelegationValid_AllowsAccess()
+    public async Task EvaluateAsync_Delegation_ValidSource_Allowed()
     {
         // Delegator has permission
         // Delegatee receives delegation
@@ -440,7 +440,7 @@ public class AuthorizationEngineTests : TestBase
         await CreateAccessRuleAsync(delegatorPrincipalId, _productsReadPermId, AccessEffect.Allow);
 
         // Create EXPIRED delegation to test user
-        var delegationRule = new AccessRule(_testPrincipalId, _productsReadPermId, AccessEffect.Allow, AccessRuleOrigin.Delegated, ScopeMode.None, validUntil: DateTime.UtcNow.AddHours(-1));
+        var delegationRule = new AccessRule(_testPrincipalId, _productsReadPermId, AccessEffect.Allow, AccessRuleOrigin.Delegated, ScopeMode.None, validUntil: DateTime.UtcNow.AddHours(-1), delegatedFromUserId: delegatorUser.Id);
         Context.AccessRules.Add(delegationRule);
         await Context.SaveChangesAsync(default);
 
@@ -453,7 +453,7 @@ public class AuthorizationEngineTests : TestBase
     }
 
     [Test]
-    public async Task EvaluateAsync_DelegationSourceLost_DeniesAccess()
+    public async Task EvaluateAsync_Delegation_SourceLost_Denied()
     {
         // Delegator loses permission
         // Delegation should become invalid
@@ -757,6 +757,167 @@ public class AuthorizationEngineTests : TestBase
 
         Assert.That(decision.Allowed, Is.False);
         Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_NO_PERMISSION"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_InactiveRole_DoesNotGrant()
+    {
+        var role = await CreateRoleAsync(_companyId, _appId, "Reader", "READER");
+        var principal = await CreateAuthPrincipalForRoleAsync(role.Id, _companyId, _appId);
+        await CreateAccessRuleAsync(principal.Id, _productsReadPermId, AccessEffect.Allow);
+        role.SetStatus(RoleStatus.Inactive);
+        await Context.SaveChangesAsync(default);
+        await AssignRolesToTestUserAsync(role.Id);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_NO_PERMISSION"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_ExpiredRole_DoesNotGrant()
+    {
+        var role = await CreateExpiredRoleAsync("Reader", "READER", RoleKind.Standard);
+        var principal = await CreateAuthPrincipalForRoleAsync(role.Id, _companyId, _appId);
+        await CreateAccessRuleAsync(principal.Id, _productsReadPermId, AccessEffect.Allow);
+        await AssignRolesToTestUserAsync(role.Id);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_NO_PERMISSION"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_InactiveIntermediateRole_DoesNotConveyDescendantAllow()
+    {
+        // Grandparent -> Parent (inactive) -> Child; Child ALLOWs Read; user holds Grandparent
+        var (grandparent, parent, child) = await CreateRoleChainAsync();
+        await CreateAccessRuleAsync(child.PrincipalId, _productsReadPermId, AccessEffect.Allow);
+        var parentRole = await Context.Roles.SingleAsync(r => r.Id == parent.RoleId);
+        parentRole.SetStatus(RoleStatus.Inactive);
+        await Context.SaveChangesAsync(default);
+        await AssignRolesToTestUserAsync(grandparent.RoleId);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_NO_PERMISSION"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_ExpiredCompanySuperAdmin_DoesNotGrant()
+    {
+        var role = await CreateExpiredRoleAsync("SuperAdmin", "SUPERADMIN", RoleKind.CompanySuperAdmin);
+        await CreateAuthPrincipalForRoleAsync(role.Id, _companyId, _appId);
+        await AssignRolesToTestUserAsync(role.Id);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_NO_PERMISSION"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_ExpiredGlobalSuperAdmin_DoesNotGrant()
+    {
+        var companyB = await CreateCompanyAsync("COMPB", "Company B");
+        var role = await CreateExpiredRoleAsync("GlobalSuperAdmin", "GLOBAL_SUPER", RoleKind.GlobalSuperAdmin);
+        await CreateAuthPrincipalForRoleAsync(role.Id, _companyId, _appId);
+        await AssignRolesToTestUserAsync(role.Id);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, companyB, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_MEMBERSHIP"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_Delegation_SourceDenied_Denied()
+    {
+        var delegator = await CreateMemberAsync("delegator@test.com", _companyId);
+        await CreateAccessRuleAsync(delegator.PrincipalId, _productsReadPermId, AccessEffect.Allow);
+        await CreateAccessRuleAsync(delegator.PrincipalId, _productsReadPermId, AccessEffect.Deny);
+        await DelegateToTestUserAsync(delegator.UserId, _productsReadPermId);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_NO_PERMISSION"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_Delegation_SourceExpired_Denied()
+    {
+        var delegator = await CreateMemberAsync("delegator@test.com", _companyId);
+        Context.AccessRules.Add(new AccessRule(delegator.PrincipalId, _productsReadPermId, AccessEffect.Allow, AccessRuleOrigin.Manual, ScopeMode.None, validUntil: DateTime.UtcNow.AddHours(-1)));
+        await Context.SaveChangesAsync(default);
+        await DelegateToTestUserAsync(delegator.UserId, _productsReadPermId);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_NO_PERMISSION"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_Delegation_SourceWrongCompany_Denied()
+    {
+        // The delegator holds the permission only in another company
+        var companyB = await CreateCompanyAsync("COMPB", "Company B");
+        var delegator = await CreateMemberAsync("delegator@test.com", companyB);
+        await CreateAccessRuleAsync(delegator.PrincipalId, _productsReadPermId, AccessEffect.Allow);
+        await DelegateToTestUserAsync(delegator.UserId, _productsReadPermId);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_NO_PERMISSION"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_Delegation_SourceOnlyHoldsDelegation_Denied()
+    {
+        // A delegator whose only grant is itself a delegation cannot re-delegate it
+        var original = await CreateMemberAsync("original@test.com", _companyId);
+        await CreateAccessRuleAsync(original.PrincipalId, _productsReadPermId, AccessEffect.Allow);
+        var delegator = await CreateMemberAsync("delegator@test.com", _companyId);
+        Context.AccessRules.Add(new AccessRule(delegator.PrincipalId, _productsReadPermId, AccessEffect.Allow, AccessRuleOrigin.Delegated, ScopeMode.None, validUntil: DateTime.UtcNow.AddHours(1), delegatedFromUserId: original.UserId));
+        await Context.SaveChangesAsync(default);
+        await DelegateToTestUserAsync(delegator.UserId, _productsReadPermId);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_NO_PERMISSION"));
+    }
+
+    private async Task<Role> CreateExpiredRoleAsync(string name, string code, RoleKind kind)
+    {
+        var role = new Role(_companyId, _appId, code, name, kind, validUntil: DateTime.UtcNow.AddHours(-1));
+        Context.Roles.Add(role);
+        await Context.SaveChangesAsync(default);
+        return role;
+    }
+
+    private async Task<(Guid UserId, Guid PrincipalId)> CreateMemberAsync(string email, Guid companyId)
+    {
+        var user = await CreateUserAsync(email, "Test123!");
+        var membership = await CreateUserCompanyAsync(user.Id, companyId, Guid.NewGuid());
+        var principal = await CreateAuthPrincipalForUserCompanyAsync(membership.Id, companyId, _appId);
+        if (Context is ApplicationDbContext dbContext)
+        {
+            dbContext.Entry(membership).Property("PrincipalId").CurrentValue = principal.Id;
+            await dbContext.SaveChangesAsync(default);
+        }
+        return (user.Id, principal.Id);
+    }
+
+    private async Task DelegateToTestUserAsync(Guid delegatorUserId, Guid permissionId)
+    {
+        Context.AccessRules.Add(new AccessRule(_testPrincipalId, permissionId, AccessEffect.Allow, AccessRuleOrigin.Delegated, ScopeMode.None, validUntil: DateTime.UtcNow.AddHours(1), delegatedFromUserId: delegatorUserId));
+        await Context.SaveChangesAsync(default);
     }
 
     private async Task<(Guid RoleId, Guid PrincipalId)> CreateRoleWithPrincipalAsync(string name, string code, Guid? parentRoleId = null)
