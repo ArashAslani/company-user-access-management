@@ -229,14 +229,11 @@ public class AuthorizationEngineTests : TestBase
     // ============================================================================
 
     [Test]
-    public async Task EvaluateAsync_BranchLocalDeny_IndependentAllowWins()
+    public async Task EvaluateAsync_ScopeMismatchDeny_DoesNotBlock()
     {
-        // User has two independent roles
         // Role A: DENY Products.Edit @ Workshop A
         // Role B: ALLOW Products.Edit @ Workshop B
-        // Request: Products.Edit @ Workshop B
-        // Note: Current implementation evaluates DENY per scope; DENY on Workshop A doesn't block Workshop B
-        // This test verifies scope-matched DENY behavior
+        // Request: Products.Edit @ Workshop B; the DENY does not match the requested scope
 
         var roleA = await CreateRoleAsync(_companyId, _appId, "RoleA", "ROLE_A");
         var authPrincipalA = await CreateAuthPrincipalForRoleAsync(roleA.Id, _companyId, _appId);
@@ -361,29 +358,27 @@ public class AuthorizationEngineTests : TestBase
     public async Task EvaluateAsync_TransitivePrerequisite_BlocksWhenAncestorDenied()
     {
         // Edit -> requires Read -> requires View
-        // View is denied on ancestor
-        // Edit should be denied
+        // Parent DENYs View; Child ALLOWs Edit, Read and View; user holds Child
+        // The ancestor DENY of a transitive prerequisite closes the gate for Edit
 
         var productsViewPerm = await CreatePermissionAsync(
             (await Context.Resources.FirstAsync(r => r.Code == "Products")).Id,
             "View");
 
-        // Create implication chain: Edit -> Read (already exists from seed), Read -> View (new)
         await CreatePermissionImplicationAsync(_productsEditPermId, _productsReadPermId);
         await CreatePermissionImplicationAsync(_productsReadPermId, productsViewPerm);
 
-        var role = await CreateRoleAsync(_companyId, _appId, "Viewer", "VIEWER");
-        var authPrincipal = await CreateAuthPrincipalForRoleAsync(role.Id, _companyId, _appId);
+        var parent = await CreateRoleAsync(_companyId, _appId, "Parent", "PARENT");
+        var parentPrincipal = await CreateAuthPrincipalForRoleAsync(parent.Id, _companyId, _appId);
+        var child = await CreateRoleAsync(_companyId, _appId, "Child", "CHILD", RoleKind.Standard, parent.Id);
+        var childPrincipal = await CreateAuthPrincipalForRoleAsync(child.Id, _companyId, _appId);
 
-        // DENY View on ancestor
-        await CreateAccessRuleAsync(authPrincipal.Id, productsViewPerm, AccessEffect.Deny);
+        await CreateAccessRuleAsync(parentPrincipal.Id, productsViewPerm, AccessEffect.Deny);
+        await CreateAccessRuleAsync(childPrincipal.Id, _productsEditPermId, AccessEffect.Allow);
+        await CreateAccessRuleAsync(childPrincipal.Id, _productsReadPermId, AccessEffect.Allow);
+        await CreateAccessRuleAsync(childPrincipal.Id, productsViewPerm, AccessEffect.Allow);
 
-        // ALLOW Edit on descendant
-        await CreateAccessRuleAsync(authPrincipal.Id, _productsEditPermId, AccessEffect.Allow);
-
-        var userCompany = await Context.UserCompanies.FirstOrDefaultAsync(uc => uc.UserId == _testUserId);
-        userCompany!.AddRole(role.Id);
-        await Context.SaveChangesAsync(default);
+        await AssignRolesToTestUserAsync(child.Id);
 
         var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Edit");
         var decision = await EvaluateAsync(request);
@@ -619,33 +614,171 @@ public class AuthorizationEngineTests : TestBase
     }
 
     [Test]
-    public async Task EvaluateAsync_RoleUp_AncestorAllowDescendant()
+    public async Task EvaluateAsync_RoleUp_DescendantAllowEffectiveForAncestorHolder()
     {
-        // Role hierarchy: Grandparent -> Parent -> Child
-        // Grandparent has ALLOW
-        // User assigned to Child
-        // Expected: ALLOWED (Role Up)
+        // Grandparent -> Parent -> Child; Child ALLOWs Read; user holds Grandparent
+        var (grandparent, _, child) = await CreateRoleChainAsync();
+        await CreateAccessRuleAsync(child.PrincipalId, _productsReadPermId, AccessEffect.Allow);
+        await AssignRolesToTestUserAsync(grandparent.RoleId);
 
-        var grandparent = await CreateRoleAsync(_companyId, _appId, "Grandparent", "GRANDPARENT");
-        var gpAuthPrincipal = await CreateAuthPrincipalForRoleAsync(grandparent.Id, _companyId, _appId);
-
-        var parent = await CreateRoleAsync(_companyId, _appId, "Parent", "PARENT", RoleKind.Standard, grandparent.Id);
-        var parentAuthPrincipal = await CreateAuthPrincipalForRoleAsync(parent.Id, _companyId, _appId);
-
-        var child = await CreateRoleAsync(_companyId, _appId, "Child", "CHILD", RoleKind.Standard, parent.Id);
-        var childAuthPrincipal = await CreateAuthPrincipalForRoleAsync(child.Id, _companyId, _appId);
-
-        // Grandparent ALLOW
-        await CreateAccessRuleAsync(gpAuthPrincipal.Id, _productsReadPermId, AccessEffect.Allow);
-
-        // User assigned to Child
-        var userCompany = await Context.UserCompanies.FirstOrDefaultAsync(uc => uc.UserId == _testUserId);
-        userCompany!.AddRole(child.Id);
-        await Context.SaveChangesAsync(default);
-
-        var request = new AccessRequest(_testUserId, _companyId, "QC", "Products.Read");
-        var decision = await EvaluateAsync(request);
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
 
         Assert.That(decision.Allowed, Is.True);
+        Assert.That(decision.ReasonCode, Is.EqualTo("ALLOWED"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_RoleDown_AncestorAllowNotInheritedByDescendantHolder()
+    {
+        // Grandparent -> Parent -> Child; Grandparent ALLOWs Read; user holds Child
+        var (grandparent, _, child) = await CreateRoleChainAsync();
+        await CreateAccessRuleAsync(grandparent.PrincipalId, _productsReadPermId, AccessEffect.Allow);
+        await AssignRolesToTestUserAsync(child.RoleId);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_NO_PERMISSION"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_RoleUp_DenyBetweenOriginAndAssignedRole_Blocks()
+    {
+        // Grandparent -> Parent -> Child; Child ALLOWs Read, Parent DENYs Read; user holds Grandparent
+        var (grandparent, parent, child) = await CreateRoleChainAsync();
+        await CreateAccessRuleAsync(child.PrincipalId, _productsReadPermId, AccessEffect.Allow);
+        await CreateAccessRuleAsync(parent.PrincipalId, _productsReadPermId, AccessEffect.Deny);
+        await AssignRolesToTestUserAsync(grandparent.RoleId);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_EXPLICIT_DENY"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_DirectAllowAndDirectDeny_Denied()
+    {
+        await CreateAccessRuleAsync(_testPrincipalId, _productsReadPermId, AccessEffect.Allow);
+        await CreateAccessRuleAsync(_testPrincipalId, _productsReadPermId, AccessEffect.Deny);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_EXPLICIT_DENY"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_RoleAllowAndDirectDeny_Denied()
+    {
+        var role = await CreateRoleWithPrincipalAsync("Reader", "READER");
+        await CreateAccessRuleAsync(role.PrincipalId, _productsReadPermId, AccessEffect.Allow);
+        await CreateAccessRuleAsync(_testPrincipalId, _productsReadPermId, AccessEffect.Deny);
+        await AssignRolesToTestUserAsync(role.RoleId);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_EXPLICIT_DENY"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_DirectDenyOfPrerequisite_DeniesGlobally()
+    {
+        var role = await CreateRoleWithPrincipalAsync("Editor", "EDITOR");
+        await CreateAccessRuleAsync(role.PrincipalId, _productsReadPermId, AccessEffect.Allow);
+        await CreateAccessRuleAsync(role.PrincipalId, _productsEditPermId, AccessEffect.Allow);
+        await CreateAccessRuleAsync(_testPrincipalId, _productsReadPermId, AccessEffect.Deny);
+        await AssignRolesToTestUserAsync(role.RoleId);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Edit"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_EXPLICIT_DENY"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_SiblingBranchDeny_SameScope_DoesNotBlockOtherBranch()
+    {
+        // Two independent roles; A DENYs Read, B ALLOWs Read, both unscoped
+        var roleA = await CreateRoleWithPrincipalAsync("RoleA", "ROLE_A");
+        var roleB = await CreateRoleWithPrincipalAsync("RoleB", "ROLE_B");
+        await CreateAccessRuleAsync(roleA.PrincipalId, _productsReadPermId, AccessEffect.Deny);
+        await CreateAccessRuleAsync(roleB.PrincipalId, _productsReadPermId, AccessEffect.Allow);
+        await AssignRolesToTestUserAsync(roleA.RoleId, roleB.RoleId);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.True);
+        Assert.That(decision.ReasonCode, Is.EqualTo("ALLOWED"));
+        Assert.That(decision.Sources.Select(s => s.SourceId), Is.EquivalentTo(new[] { roleB.RoleId.ToString() }));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_SharedAncestorDeny_BlocksAllSiblingBranches()
+    {
+        // Parent DENYs Read; siblings A and B under Parent both ALLOW Read; user holds A and B
+        var parent = await CreateRoleWithPrincipalAsync("Parent", "PARENT");
+        var roleA = await CreateRoleWithPrincipalAsync("RoleA", "ROLE_A", parent.RoleId);
+        var roleB = await CreateRoleWithPrincipalAsync("RoleB", "ROLE_B", parent.RoleId);
+        await CreateAccessRuleAsync(parent.PrincipalId, _productsReadPermId, AccessEffect.Deny);
+        await CreateAccessRuleAsync(roleA.PrincipalId, _productsReadPermId, AccessEffect.Allow);
+        await CreateAccessRuleAsync(roleB.PrincipalId, _productsReadPermId, AccessEffect.Allow);
+        await AssignRolesToTestUserAsync(roleA.RoleId, roleB.RoleId);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_EXPLICIT_DENY"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_PrerequisiteDeniedOnSamePath_ReturnsPrerequisiteGate()
+    {
+        var role = await CreateRoleWithPrincipalAsync("Editor", "EDITOR");
+        await CreateAccessRuleAsync(role.PrincipalId, _productsEditPermId, AccessEffect.Allow);
+        await CreateAccessRuleAsync(role.PrincipalId, _productsReadPermId, AccessEffect.Allow);
+        await CreateAccessRuleAsync(role.PrincipalId, _productsReadPermId, AccessEffect.Deny);
+        await AssignRolesToTestUserAsync(role.RoleId);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Edit"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_PREREQUISITE_GATE"));
+    }
+
+    [Test]
+    public async Task EvaluateAsync_NoAllowAnywhere_ReturnsNoPermission()
+    {
+        var role = await CreateRoleWithPrincipalAsync("Empty", "EMPTY");
+        await AssignRolesToTestUserAsync(role.RoleId);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_NO_PERMISSION"));
+    }
+
+    private async Task<(Guid RoleId, Guid PrincipalId)> CreateRoleWithPrincipalAsync(string name, string code, Guid? parentRoleId = null)
+    {
+        var role = await CreateRoleAsync(_companyId, _appId, name, code, RoleKind.Standard, parentRoleId);
+        var principal = await CreateAuthPrincipalForRoleAsync(role.Id, _companyId, _appId);
+        return (role.Id, principal.Id);
+    }
+
+    private async Task<((Guid RoleId, Guid PrincipalId) Grandparent, (Guid RoleId, Guid PrincipalId) Parent, (Guid RoleId, Guid PrincipalId) Child)> CreateRoleChainAsync()
+    {
+        var grandparent = await CreateRoleWithPrincipalAsync("Grandparent", "GRANDPARENT");
+        var parent = await CreateRoleWithPrincipalAsync("Parent", "PARENT", grandparent.RoleId);
+        var child = await CreateRoleWithPrincipalAsync("Child", "CHILD", parent.RoleId);
+        return (grandparent, parent, child);
+    }
+
+    private async Task AssignRolesToTestUserAsync(params Guid[] roleIds)
+    {
+        var userCompany = await Context.UserCompanies.SingleAsync(uc => uc.UserId == _testUserId && uc.CompanyId == _companyId);
+        foreach (var roleId in roleIds)
+            userCompany.AddRole(roleId);
+        await Context.SaveChangesAsync(default);
     }
 }
