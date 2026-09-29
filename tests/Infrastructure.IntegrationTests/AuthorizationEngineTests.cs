@@ -5,6 +5,8 @@ using CompanyAccessManagement.Domain.Organization;
 using CompanyAccessManagement.Infrastructure.Authorization;
 using CompanyAccessManagement.Infrastructure.Data;
 using CompanyAccessManagement.Infrastructure.Identity;
+using CompanyAccessManagement.Web.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -952,11 +954,21 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
                 .AddEntityFrameworkStores<ApplicationDbContext>()
                 .AddDefaultTokenProviders();
 
+            // Register authentication services (required for UseAuthentication/UseAuthorization in pipeline)
+            services.AddAuthentication()
+                .AddBearerToken(IdentityConstants.BearerScheme);
+
+            services.AddAuthorizationBuilder();
+
             // Register IApplicationDbContext
             services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
 
             // Register IAccessEvaluator
             services.AddScoped<IAccessEvaluator, AccessEvaluator>();
+
+            // Register authorization policy provider and handler (for UseAuthorization in pipeline)
+            services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+            services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
 
             // Ensure the database is created
             var sp = services.BuildServiceProvider();

@@ -7,7 +7,8 @@ namespace CompanyAccessManagement.Web.Infrastructure;
 /// <summary>
 /// Converts well-known application exceptions into RFC 9110-compliant <see cref="ProblemDetails"/> responses,
 /// mapping <see cref="ValidationException"/> → 400, <see cref="NotFoundException"/> → 404,
-/// <see cref="UnauthorizedAccessException"/> → 401, and <see cref="ForbiddenAccessException"/> → 403.
+/// <see cref="UnauthorizedAccessException"/> → 401, <see cref="ForbiddenAccessException"/> → 403,
+/// and <see cref="ConflictException"/> → 409.
 /// Unrecognised exceptions are not handled and fall through to the default middleware.
 /// </summary>
 public class ProblemDetailsExceptionHandler : IExceptionHandler
@@ -39,6 +40,13 @@ public class ProblemDetailsExceptionHandler : IExceptionHandler
                 Status = StatusCodes.Status403Forbidden,
                 Title = "Forbidden",
                 Type = "https://tools.ietf.org/html/rfc9110#section-15.5.4"
+            }),
+            ConflictException ce => (StatusCodes.Status409Conflict, new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Conflict",
+                Type = "https://tools.ietf.org/html/rfc9110#section-15.5.6",
+                Detail = ce.Message
             }),
             _ => (-1, null)
         };

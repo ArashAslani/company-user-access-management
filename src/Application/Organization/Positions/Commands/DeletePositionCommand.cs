@@ -1,3 +1,4 @@
+using CompanyAccessManagement.Application.Common.Exceptions;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Domain.Organization;
 using MediatR;
@@ -36,7 +37,7 @@ public class DeletePositionCommandHandler : IRequestHandler<DeletePositionComman
         if (activeAssignments.Any())
         {
             var assignmentIds = activeAssignments.Select(a => a.PersonnelId).ToList();
-            throw new InvalidOperationException("ACTIVE_ASSIGNMENT_EXISTS")
+            throw new ConflictException("Cannot delete position with active personnel assignments.")
             {
                 Data = { ["activePersonnelPositionIds"] = assignmentIds }
             };

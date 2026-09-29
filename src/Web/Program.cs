@@ -1,5 +1,6 @@
 using CompanyAccessManagement.Infrastructure.Data;
 using CompanyAccessManagement.Infrastructure.Identity;
+using CompanyAccessManagement.Web.Middleware;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -57,6 +58,10 @@ else
 }
 
 app.UseFileServer();
+
+app.UseAuthentication();
+app.UseMiddleware<WorkspaceContextMiddleware>();
+app.UseAuthorization();
 
 app.MapOpenApi();
 app.MapScalarApiReference();

@@ -8,6 +8,8 @@ public static class RequirePermissionEndpointExtensions
 {
     public static RouteHandlerBuilder RequirePermission(this RouteHandlerBuilder builder, string permission)
     {
+        var policyName = $"Permission:{permission}";
+        builder.RequireAuthorization(policyName);
         builder.Add(endpointBuilder =>
         {
             endpointBuilder.Metadata.Add(new RequirePermissionMetadata(permission));
