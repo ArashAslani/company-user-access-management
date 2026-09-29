@@ -32,8 +32,8 @@ public class AssignPositionCommandHandler : IRequestHandler<AssignPositionComman
 
         Guard.Against.NotFound(request.PersonnelId, personnel);
 
-        var positionExists = await _context.Positions.AnyAsync(p => p.Id == request.PositionId, cancellationToken);
-        if (!positionExists)
+        var positionCompanies = await PositionCompanyLookup.LoadAsync(_context, personnel, request.PositionId, cancellationToken);
+        if (!positionCompanies.ContainsKey(request.PositionId))
             throw new NotFoundException(request.PositionId.ToString(), "Position");
 
         var assignment = personnel.AssignPosition(
@@ -41,7 +41,8 @@ public class AssignPositionCommandHandler : IRequestHandler<AssignPositionComman
             request.IsPrimary,
             request.EffectiveFrom,
             request.EffectiveTo,
-            _timeProvider.GetUtcNow().UtcDateTime);
+            _timeProvider.GetUtcNow().UtcDateTime,
+            positionCompanies);
 
         await _context.SaveChangesAsync(cancellationToken);
 

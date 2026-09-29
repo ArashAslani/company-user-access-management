@@ -126,6 +126,9 @@ public class OrganizationDomainTests : TestBase
 
     private static DateTime Now => DateTime.UtcNow;
 
+    private IReadOnlyDictionary<Guid, Guid> PositionCompanies() =>
+        Context.Positions.AsNoTracking().ToDictionary(p => p.Id, p => p.CompanyId);
+
     private static void ShouldViolate(Action action, string code)
     {
         var ex = Should.Throw<DomainRuleViolationException>(action);
@@ -137,7 +140,7 @@ public class OrganizationDomainTests : TestBase
     {
         var futureDate = Now.AddDays(10);
 
-        var assignment = _personnel.AssignPosition(_positionId, false, futureDate, null, Now);
+        var assignment = _personnel.AssignPosition(_positionId, false, futureDate, null, Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
         assignment.IsCurrentlyEffective().ShouldBeFalse();
@@ -147,7 +150,7 @@ public class OrganizationDomainTests : TestBase
     [Test]
     public async Task PersonnelPosition_EffectiveDating_PastAssignment_NotEffective()
     {
-        var assignment = _personnel.AssignPosition(_positionId, false, Now.AddDays(-10), Now.AddDays(-5), Now);
+        var assignment = _personnel.AssignPosition(_positionId, false, Now.AddDays(-10), Now.AddDays(-5), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
         assignment.IsCurrentlyEffective().ShouldBeFalse();
@@ -156,7 +159,7 @@ public class OrganizationDomainTests : TestBase
     [Test]
     public async Task PersonnelPosition_EffectiveDating_CurrentAssignment_IsEffective()
     {
-        var assignment = _personnel.AssignPosition(_positionId, true, Now.AddDays(-5), Now.AddDays(5), Now);
+        var assignment = _personnel.AssignPosition(_positionId, true, Now.AddDays(-5), Now.AddDays(5), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
         assignment.IsCurrentlyEffective().ShouldBeTrue();
@@ -166,8 +169,8 @@ public class OrganizationDomainTests : TestBase
     [Test]
     public async Task PersonnelPosition_EachAssignmentHasItsOwnPersistedId()
     {
-        var first = _personnel.AssignPosition(_positionId, false, Now.AddDays(-20), Now.AddDays(-10), Now);
-        var second = _personnel.AssignPosition(_positionId, false, Now.AddDays(-5), null, Now);
+        var first = _personnel.AssignPosition(_positionId, false, Now.AddDays(-20), Now.AddDays(-10), Now, PositionCompanies());
+        var second = _personnel.AssignPosition(_positionId, false, Now.AddDays(-5), null, Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
         first.Id.ShouldNotBe(Guid.Empty);
@@ -183,9 +186,9 @@ public class OrganizationDomainTests : TestBase
     [Test]
     public async Task PersonnelPosition_RepeatedNonOverlappingAssignment_SamePosition_Allowed()
     {
-        _personnel.AssignPosition(_positionId, false, Now.AddDays(-30), Now.AddDays(-20), Now);
-        _personnel.AssignPosition(_positionId, false, Now.AddDays(-10), Now.AddDays(-5), Now);
-        _personnel.AssignPosition(_positionId, false, Now.AddDays(-1), null, Now);
+        _personnel.AssignPosition(_positionId, false, Now.AddDays(-30), Now.AddDays(-20), Now, PositionCompanies());
+        _personnel.AssignPosition(_positionId, false, Now.AddDays(-10), Now.AddDays(-5), Now, PositionCompanies());
+        _personnel.AssignPosition(_positionId, false, Now.AddDays(-1), null, Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
         _personnel.Positions.Count(p => p.PositionId == _positionId).ShouldBe(3);
@@ -194,17 +197,17 @@ public class OrganizationDomainTests : TestBase
     [Test]
     public async Task PersonnelPosition_OverlappingAssignment_SamePosition_Denied()
     {
-        _personnel.AssignPosition(_positionId, false, Now.AddDays(-5), Now.AddDays(5), Now);
+        _personnel.AssignPosition(_positionId, false, Now.AddDays(-5), Now.AddDays(5), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
-        ShouldViolate(() => _personnel.AssignPosition(_positionId, false, Now.AddDays(-3), Now.AddDays(7), Now), "ASSIGNMENT_OVERLAP");
+        ShouldViolate(() => _personnel.AssignPosition(_positionId, false, Now.AddDays(-3), Now.AddDays(7), Now, PositionCompanies()), "ASSIGNMENT_OVERLAP");
     }
 
     [Test]
     public async Task PersonnelPosition_FutureReassignment_WhileCurrentExists_Allowed()
     {
-        _personnel.AssignPosition(_positionId, false, Now.AddDays(-5), Now.AddDays(5), Now);
-        var future = _personnel.AssignPosition(_positionId, false, Now.AddDays(10), null, Now);
+        _personnel.AssignPosition(_positionId, false, Now.AddDays(-5), Now.AddDays(5), Now, PositionCompanies());
+        var future = _personnel.AssignPosition(_positionId, false, Now.AddDays(10), null, Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
         future.IsCurrentlyEffective().ShouldBeFalse();
@@ -214,10 +217,10 @@ public class OrganizationDomainTests : TestBase
     [Test]
     public async Task PersonnelPosition_InactiveAssignment_DoesNotBlockOverlap()
     {
-        var removed = _personnel.AssignPosition(_positionId, false, Now.AddDays(-5), null, Now);
+        var removed = _personnel.AssignPosition(_positionId, false, Now.AddDays(-5), null, Now, PositionCompanies());
         _personnel.RemovePositionAssignment(removed.Id, Now);
 
-        var replacement = _personnel.AssignPosition(_positionId, false, Now.AddDays(-4), null, Now);
+        var replacement = _personnel.AssignPosition(_positionId, false, Now.AddDays(-4), null, Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
         replacement.IsCurrentlyEffective().ShouldBeTrue();
@@ -226,19 +229,19 @@ public class OrganizationDomainTests : TestBase
     [Test]
     public void PersonnelPosition_InvalidWindow_Denied()
     {
-        ShouldViolate(() => _personnel.AssignPosition(_positionId, false, Now, Now.AddDays(-1), Now), "INVALID_EFFECTIVE_WINDOW");
+        ShouldViolate(() => _personnel.AssignPosition(_positionId, false, Now, Now.AddDays(-1), Now, PositionCompanies()), "INVALID_EFFECTIVE_WINDOW");
     }
 
     [Test]
     public async Task PersonnelPosition_Update_TargetsOnlyTheGivenAssignment()
     {
-        var first = _personnel.AssignPosition(_positionId, false, Now.AddDays(1), Now.AddDays(10), Now);
-        var second = _personnel.AssignPosition(_positionId, false, Now.AddDays(20), Now.AddDays(30), Now);
+        var first = _personnel.AssignPosition(_positionId, false, Now.AddDays(1), Now.AddDays(10), Now, PositionCompanies());
+        var second = _personnel.AssignPosition(_positionId, false, Now.AddDays(20), Now.AddDays(30), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
         var firstFrom = first.EffectiveFrom;
         var firstTo = first.EffectiveTo;
 
-        _personnel.UpdatePositionAssignment(second.Id, false, Now.AddDays(15), Now.AddDays(40), PersonnelPositionStatus.Active, Now);
+        _personnel.UpdatePositionAssignment(second.Id, false, Now.AddDays(15), Now.AddDays(40), PersonnelPositionStatus.Active, Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
         first.EffectiveFrom.ShouldBe(firstFrom);
@@ -250,20 +253,20 @@ public class OrganizationDomainTests : TestBase
     [Test]
     public void PersonnelPosition_Update_OverlapWithSibling_Denied()
     {
-        _personnel.AssignPosition(_positionId, false, Now.AddDays(1), Now.AddDays(10), Now);
-        var second = _personnel.AssignPosition(_positionId, false, Now.AddDays(20), Now.AddDays(30), Now);
+        _personnel.AssignPosition(_positionId, false, Now.AddDays(1), Now.AddDays(10), Now, PositionCompanies());
+        var second = _personnel.AssignPosition(_positionId, false, Now.AddDays(20), Now.AddDays(30), Now, PositionCompanies());
 
         ShouldViolate(
-            () => _personnel.UpdatePositionAssignment(second.Id, false, Now.AddDays(5), Now.AddDays(30), PersonnelPositionStatus.Active, Now),
+            () => _personnel.UpdatePositionAssignment(second.Id, false, Now.AddDays(5), Now.AddDays(30), PersonnelPositionStatus.Active, Now, PositionCompanies()),
             "ASSIGNMENT_OVERLAP");
     }
 
     [Test]
     public void PersonnelPosition_Update_OwnWindowDoesNotCountAsOverlap()
     {
-        var assignment = _personnel.AssignPosition(_positionId, false, Now.AddDays(1), Now.AddDays(10), Now);
+        var assignment = _personnel.AssignPosition(_positionId, false, Now.AddDays(1), Now.AddDays(10), Now, PositionCompanies());
 
-        _personnel.UpdatePositionAssignment(assignment.Id, false, Now.AddDays(2), Now.AddDays(12), PersonnelPositionStatus.Active, Now);
+        _personnel.UpdatePositionAssignment(assignment.Id, false, Now.AddDays(2), Now.AddDays(12), PersonnelPositionStatus.Active, Now, PositionCompanies());
 
         assignment.EffectiveTo!.Value.Date.ShouldBe(Now.AddDays(12).Date);
     }
@@ -271,42 +274,92 @@ public class OrganizationDomainTests : TestBase
     [Test]
     public void PersonnelPosition_Update_EffectiveFromLockedAfterStart()
     {
-        var assignment = _personnel.AssignPosition(_positionId, false, Now.AddDays(-2), Now.AddDays(10), Now);
+        var assignment = _personnel.AssignPosition(_positionId, false, Now.AddDays(-2), Now.AddDays(10), Now, PositionCompanies());
 
         ShouldViolate(
-            () => _personnel.UpdatePositionAssignment(assignment.Id, false, Now.AddDays(-3), Now.AddDays(10), PersonnelPositionStatus.Active, Now),
+            () => _personnel.UpdatePositionAssignment(assignment.Id, false, Now.AddDays(-3), Now.AddDays(10), PersonnelPositionStatus.Active, Now, PositionCompanies()),
             "EFFECTIVE_FROM_LOCKED");
 
-        _personnel.UpdatePositionAssignment(assignment.Id, false, assignment.EffectiveFrom, Now.AddDays(20), PersonnelPositionStatus.Active, Now);
+        _personnel.UpdatePositionAssignment(assignment.Id, false, assignment.EffectiveFrom, Now.AddDays(20), PersonnelPositionStatus.Active, Now, PositionCompanies());
         assignment.EffectiveTo!.Value.Date.ShouldBe(Now.AddDays(20).Date);
     }
 
     [Test]
     public void PersonnelPosition_EndedAssignment_IsSealedForUpdateAndRemove()
     {
-        var ended = _personnel.AssignPosition(_positionId, false, Now.AddDays(-20), Now.AddDays(-10), Now);
+        var ended = _personnel.AssignPosition(_positionId, false, Now.AddDays(-20), Now.AddDays(-10), Now, PositionCompanies());
 
         ended.IsSealed(Now).ShouldBeTrue();
         ShouldViolate(
-            () => _personnel.UpdatePositionAssignment(ended.Id, false, ended.EffectiveFrom, Now.AddDays(5), PersonnelPositionStatus.Active, Now),
+            () => _personnel.UpdatePositionAssignment(ended.Id, false, ended.EffectiveFrom, Now.AddDays(5), PersonnelPositionStatus.Active, Now, PositionCompanies()),
             "SEALED_RECORD");
         ShouldViolate(() => _personnel.RemovePositionAssignment(ended.Id, Now), "SEALED_RECORD");
     }
 
-    [Test]
-    public async Task PersonnelPosition_NonOverlappingPrimary_Allowed()
+    private async Task<Guid> CreatePositionAsync(Guid companyId, string code)
     {
-        var position2 = new Position(_companyId, "MGR2", "Manager 2", "Another Manager");
-        Context.Positions.Add(position2);
+        var position = new Position(companyId, code, code, code);
+        Context.Positions.Add(position);
+        await Context.SaveChangesAsync(default);
+        return position.Id;
+    }
+
+    [Test]
+    public async Task Primary_SameCompany_Overlap_Denied()
+    {
+        var position2 = await CreatePositionAsync(_companyId, "MGR2");
+
+        _personnel.AssignPosition(_positionId, true, Now.AddDays(-5), Now.AddDays(5), Now, PositionCompanies());
+
+        ShouldViolate(() => _personnel.AssignPosition(position2, true, Now.AddDays(-3), Now.AddDays(7), Now, PositionCompanies()), "PRIMARY_OVERLAP_CONFLICT");
+        _personnel.Positions.Count(p => p.IsPrimary).ShouldBe(1);
+    }
+
+    [Test]
+    public async Task Primary_DifferentCompanies_Overlap_Allowed()
+    {
+        var otherCompany = await CreateCompanyAsync("OTHERCO", "Other Company");
+        var otherPosition = await CreatePositionAsync(otherCompany, "OTHERPOS");
+
+        _personnel.AssignPosition(_positionId, true, Now.AddDays(-5), Now.AddDays(5), Now, PositionCompanies());
+        _personnel.AssignPosition(otherPosition, true, Now.AddDays(-3), Now.AddDays(7), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
-        _personnel.AssignPosition(_positionId, true, Now.AddDays(-20), Now.AddDays(-10), Now);
-        _personnel.AssignPosition(position2.Id, true, Now.AddDays(5), Now.AddDays(15), Now);
+        _personnel.Positions.Count(p => p.IsPrimary && p.IsCurrentlyEffective()).ShouldBe(2);
+    }
+
+    [Test]
+    public async Task Primary_SameCompany_NonOverlap_Allowed()
+    {
+        var position2 = await CreatePositionAsync(_companyId, "MGR2");
+
+        _personnel.AssignPosition(_positionId, true, Now.AddDays(-20), Now.AddDays(-10), Now, PositionCompanies());
+        _personnel.AssignPosition(position2, true, Now.AddDays(5), Now.AddDays(15), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
         _personnel.Positions.Count(p => p.IsPrimary).ShouldBe(2);
     }
 
+    [Test]
+    public async Task Primary_SameCompany_PromotingOverlappingAssignment_Denied()
+    {
+        var position2 = await CreatePositionAsync(_companyId, "MGR2");
+
+        _personnel.AssignPosition(_positionId, true, Now.AddDays(1), Now.AddDays(10), Now, PositionCompanies());
+        var secondary = _personnel.AssignPosition(position2, false, Now.AddDays(5), Now.AddDays(15), Now, PositionCompanies());
+
+        ShouldViolate(
+            () => _personnel.UpdatePositionAssignment(secondary.Id, true, secondary.EffectiveFrom, secondary.EffectiveTo, PersonnelPositionStatus.Active, Now, PositionCompanies()),
+            "PRIMARY_OVERLAP_CONFLICT");
+        secondary.IsPrimary.ShouldBeFalse();
+    }
+
+    [Test]
+    public void Primary_UnknownPositionCompany_FailsClosed()
+    {
+        Should.Throw<InvalidOperationException>(() =>
+            _personnel.AssignPosition(_positionId, true, Now, null, Now, new Dictionary<Guid, Guid>()));
+    }
     [Test]
     public async Task Personnel_ConfirmEmployment_RequiresEffectivePosition()
     {
@@ -318,7 +371,7 @@ public class OrganizationDomainTests : TestBase
         Assert.That(ex.Message, Does.Contain("effective position"));
 
         // Assigning an effective position confirms employment (Draft -> Employed)
-        personnel.AssignPosition(_positionId, true, Now.AddDays(-1), Now.AddDays(10), Now);
+        personnel.AssignPosition(_positionId, true, Now.AddDays(-1), Now.AddDays(10), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
         personnel.Status.ShouldBe(PersonnelStatus.Employed);
@@ -332,7 +385,7 @@ public class OrganizationDomainTests : TestBase
         Context.Personnel.Add(personnel);
         await Context.SaveChangesAsync(default);
 
-        personnel.AssignPosition(_positionId, true, Now.AddDays(-1), Now.AddDays(10), Now);
+        personnel.AssignPosition(_positionId, true, Now.AddDays(-1), Now.AddDays(10), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
         var ex = Assert.Throws<InvalidOperationException>(() => personnel.RevertToDraft());
@@ -349,7 +402,7 @@ public class OrganizationDomainTests : TestBase
         var saved = await Context.Personnel.FindAsync(personnel.Id);
         saved!.Status.ShouldBe(PersonnelStatus.Draft);
 
-        var assignment = personnel.AssignPosition(_positionId, true, Now.AddDays(-1), Now.AddDays(10), Now);
+        var assignment = personnel.AssignPosition(_positionId, true, Now.AddDays(-1), Now.AddDays(10), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
         personnel.Status.ShouldBe(PersonnelStatus.Employed);
 
@@ -362,7 +415,7 @@ public class OrganizationDomainTests : TestBase
     [Test]
     public async Task Position_CannotDeactivateWithActiveAssignments()
     {
-        _personnel.AssignPosition(_positionId, true, Now.AddDays(-1), Now.AddDays(10), Now);
+        _personnel.AssignPosition(_positionId, true, Now.AddDays(-1), Now.AddDays(10), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
         var position = await Context.Positions.FindAsync(_positionId);
@@ -375,7 +428,7 @@ public class OrganizationDomainTests : TestBase
     [Test]
     public async Task Position_CanDeactivateAfterRemovingAssignments()
     {
-        var assignment = _personnel.AssignPosition(_positionId, true, Now.AddDays(-1), Now.AddDays(10), Now);
+        var assignment = _personnel.AssignPosition(_positionId, true, Now.AddDays(-1), Now.AddDays(10), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
         var position = await Context.Positions.FindAsync(_positionId);

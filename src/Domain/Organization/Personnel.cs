@@ -47,9 +47,12 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         Status = status;
     }
 
-    public PersonnelPosition AssignPosition(Guid positionId, bool isPrimary, DateTime effectiveFrom, DateTime? effectiveTo, DateTime now)
+    /// <param name="positionCompanies">Company of every position this personnel is (or will be) assigned to, including <paramref name="positionId"/>.</param>
+    public PersonnelPosition AssignPosition(Guid positionId, bool isPrimary, DateTime effectiveFrom, DateTime? effectiveTo, DateTime now, IReadOnlyDictionary<Guid, Guid> positionCompanies)
     {
         EnsureNoOverlapOnSamePosition(positionId, effectiveFrom, effectiveTo, excludeAssignmentId: null);
+        if (isPrimary)
+            EnsureNoOverlappingPrimaryInSameCompany(positionId, effectiveFrom, effectiveTo, excludeAssignmentId: null, positionCompanies);
 
         var assignment = new PersonnelPosition(Id, positionId, isPrimary, effectiveFrom, effectiveTo, now);
         _positions.Add(assignment);
@@ -61,7 +64,7 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         return assignment;
     }
 
-    public void UpdatePositionAssignment(Guid assignmentId, bool isPrimary, DateTime effectiveFrom, DateTime? effectiveTo, PersonnelPositionStatus status, DateTime now)
+    public void UpdatePositionAssignment(Guid assignmentId, bool isPrimary, DateTime effectiveFrom, DateTime? effectiveTo, PersonnelPositionStatus status, DateTime now, IReadOnlyDictionary<Guid, Guid> positionCompanies)
     {
         var assignment = GetAssignment(assignmentId);
         EnsureNotSealed(assignment, now);
@@ -70,7 +73,11 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
             throw new DomainRuleViolationException("EFFECTIVE_FROM_LOCKED", "EffectiveFrom cannot be changed after the assignment has started.");
 
         if (status == PersonnelPositionStatus.Active)
+        {
             EnsureNoOverlapOnSamePosition(assignment.PositionId, effectiveFrom, effectiveTo, excludeAssignmentId: assignment.Id);
+            if (isPrimary)
+                EnsureNoOverlappingPrimaryInSameCompany(assignment.PositionId, effectiveFrom, effectiveTo, excludeAssignmentId: assignment.Id, positionCompanies);
+        }
 
         var primaryChanged = assignment.IsPrimary != isPrimary;
 
@@ -125,6 +132,27 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         {
             throw new DomainRuleViolationException("ASSIGNMENT_OVERLAP", "The effective window overlaps an active assignment to the same position.");
         }
+    }
+
+    private void EnsureNoOverlappingPrimaryInSameCompany(Guid positionId, DateTime effectiveFrom, DateTime? effectiveTo, Guid? excludeAssignmentId, IReadOnlyDictionary<Guid, Guid> positionCompanies)
+    {
+        var companyId = CompanyOf(positionId, positionCompanies);
+
+        var conflict = _positions.Any(p => p.IsPrimary
+            && p.IsActive
+            && p.Id != excludeAssignmentId
+            && p.HasOverlap(effectiveFrom, effectiveTo)
+            && CompanyOf(p.PositionId, positionCompanies) == companyId);
+
+        if (conflict)
+            throw new DomainRuleViolationException("PRIMARY_OVERLAP_CONFLICT", "Another primary assignment in the same company overlaps this effective window.");
+    }
+
+    private static Guid CompanyOf(Guid positionId, IReadOnlyDictionary<Guid, Guid> positionCompanies)
+    {
+        return positionCompanies.TryGetValue(positionId, out var companyId)
+            ? companyId
+            : throw new InvalidOperationException($"Company of position {positionId} was not supplied; primary assignment rules cannot be evaluated.");
     }
 
     public const int MaxSignatureBytes = 8 * 1024 * 1024;

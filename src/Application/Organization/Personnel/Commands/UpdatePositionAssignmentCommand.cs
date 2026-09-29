@@ -34,8 +34,10 @@ public class UpdatePositionAssignmentCommandHandler : IRequestHandler<UpdatePosi
 
         Guard.Against.NotFound(request.PersonnelId, personnel);
 
-        if (personnel.FindAssignment(request.AssignmentId) is null)
-            throw new NotFoundException(request.AssignmentId.ToString(), "PersonnelPosition");
+        var assignment = personnel.FindAssignment(request.AssignmentId)
+            ?? throw new NotFoundException(request.AssignmentId.ToString(), "PersonnelPosition");
+
+        var positionCompanies = await PositionCompanyLookup.LoadAsync(_context, personnel, assignment.PositionId, cancellationToken);
 
         personnel.UpdatePositionAssignment(
             request.AssignmentId,
@@ -43,7 +45,8 @@ public class UpdatePositionAssignmentCommandHandler : IRequestHandler<UpdatePosi
             request.EffectiveFrom,
             request.EffectiveTo,
             request.Status,
-            _timeProvider.GetUtcNow().UtcDateTime);
+            _timeProvider.GetUtcNow().UtcDateTime,
+            positionCompanies);
 
         await _context.SaveChangesAsync(cancellationToken);
     }

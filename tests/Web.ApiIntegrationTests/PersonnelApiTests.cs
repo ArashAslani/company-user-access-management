@@ -526,6 +526,62 @@ public class PersonnelApiTests : ApiTestBase
         var content = new MultipartFormDataContent { { fileContent, "file", "signature.png" } };
         return await client.PostAsync($"/api/v1/organization/personnel/{personnelId}/signature", content);
     }
+    [Test]
+    public async Task Primary_SameCompany_Overlap_Denied()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.Position.Create", "Organization.PersonnelPosition.Create");
+        var personnelId = await CreatePersonnelAsync(session.Client, "1212121212");
+        var positionA = await CreatePositionAsync(session.Client, "PRIA");
+        var positionB = await CreatePositionAsync(session.Client, "PRIB");
+
+        await AssignAsync(session.Client, personnelId, positionA, DateTime.UtcNow.AddDays(-5), DateTime.UtcNow.AddDays(5), isPrimary: true);
+
+        var response = await session.Client.PostAsJsonAsync(
+            $"/api/v1/organization/personnel/{personnelId}/positions",
+            new { PositionId = positionB, IsPrimary = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1), EffectiveTo = DateTime.UtcNow.AddDays(10) });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await response.Content.ReadAsStringAsync()).ShouldContain("PRIMARY_OVERLAP_CONFLICT");
+    }
+
+    [Test]
+    public async Task Primary_DifferentCompanies_Overlap_Allowed()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.Position.Create", "Organization.PersonnelPosition.Create");
+        var personnelId = await CreatePersonnelAsync(session.Client, "1313131313");
+        var positionA = await CreatePositionAsync(session.Client, "PRIC");
+
+        var otherCompanyPosition = await WithDbAsync(async db =>
+        {
+            var otherCompany = new Company("OTHER", "Other Company");
+            var position = new Position(otherCompany.Id, "OTHERPRI", "Other Primary");
+            db.Companies.Add(otherCompany);
+            db.Positions.Add(position);
+            await db.SaveChangesAsync();
+            return position.Id;
+        });
+
+        await AssignAsync(session.Client, personnelId, positionA, DateTime.UtcNow.AddDays(-5), DateTime.UtcNow.AddDays(5), isPrimary: true);
+        await AssignAsync(session.Client, personnelId, otherCompanyPosition, DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(10), isPrimary: true);
+
+        await WithDbAsync(async db =>
+            (await db.PersonnelPositions.AsNoTracking().CountAsync(pp => pp.PersonnelId == personnelId && pp.IsPrimary)).ShouldBe(2));
+    }
+
+    [Test]
+    public async Task Primary_SameCompany_NonOverlap_Allowed()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.Position.Create", "Organization.PersonnelPosition.Create");
+        var personnelId = await CreatePersonnelAsync(session.Client, "1414141414");
+        var positionA = await CreatePositionAsync(session.Client, "PRID");
+        var positionB = await CreatePositionAsync(session.Client, "PRIE");
+
+        await AssignAsync(session.Client, personnelId, positionA, DateTime.UtcNow.AddDays(-20), DateTime.UtcNow.AddDays(-10), isPrimary: true);
+        await AssignAsync(session.Client, personnelId, positionB, DateTime.UtcNow.AddDays(-1), null, isPrimary: true);
+
+        await WithDbAsync(async db =>
+            (await db.PersonnelPositions.AsNoTracking().CountAsync(pp => pp.PersonnelId == personnelId && pp.IsPrimary)).ShouldBe(2));
+    }
     private async Task<Guid> CreatePersonnelAsync(HttpClient client, string nationalCode)
     {
         var response = await client.PostAsJsonAsync("/api/v1/organization/personnel", new
