@@ -50,9 +50,7 @@ public class SensitiveDataHandlingTests : ApiTestBase
         var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.PersonnelSignature.Create");
         var personnelId = await CreatePersonnelAsync(session);
 
-        var signature = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }
-            .Concat(Enumerable.Range(0, 48).Select(i => (byte)(0xA0 + i)))
-            .ToArray();
+        var signature = TestImages.Png1x1;
         var upload = await UploadAsync(session, personnelId, signature);
         upload.StatusCode.ShouldBe(HttpStatusCode.Created);
 

@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
+using CompanyAccessManagement.Domain.Common;
 using MediatR;
+using PersonnelEntity = CompanyAccessManagement.Domain.Organization.Personnel;
 using Microsoft.EntityFrameworkCore;
 
 namespace CompanyAccessManagement.Application.Organization.Personnel.Commands.Signatures;
@@ -19,12 +21,14 @@ public class UploadSignatureCommandHandler : IRequestHandler<UploadSignatureComm
     private readonly IApplicationDbContext _context;
     private readonly IUser _user;
     private readonly ICurrentWorkspace _workspace;
+    private readonly ISignatureImageValidator _imageValidator;
 
-    public UploadSignatureCommandHandler(IApplicationDbContext context, IUser user, ICurrentWorkspace workspace)
+    public UploadSignatureCommandHandler(IApplicationDbContext context, IUser user, ICurrentWorkspace workspace, ISignatureImageValidator imageValidator)
     {
         _context = context;
         _user = user;
         _workspace = workspace;
+        _imageValidator = imageValidator;
     }
 
     public async Task<Guid> Handle(UploadSignatureCommand request, CancellationToken cancellationToken)
@@ -37,6 +41,15 @@ public class UploadSignatureCommandHandler : IRequestHandler<UploadSignatureComm
             .FirstOrDefaultAsync(p => p.Id == request.PersonnelId, cancellationToken);
 
         Guard.Against.NotFound(request.PersonnelId, personnel);
+
+        PersonnelEntity.EnsureSignatureContentAllowed(request.Content, request.ContentType);
+        switch (_imageValidator.Check(request.Content, request.ContentType))
+        {
+            case SignatureImageCheck.NotDecodable:
+                throw new DomainRuleViolationException("SIGNATURE_NOT_DECODABLE", "The signature file is not a valid image of the declared type.");
+            case SignatureImageCheck.DimensionsTooLarge:
+                throw new DomainRuleViolationException("SIGNATURE_DIMENSIONS_TOO_LARGE", "The signature image dimensions are too large.");
+        }
 
         var contentHash = Convert.ToHexString(SHA256.HashData(request.Content));
 

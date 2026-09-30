@@ -116,7 +116,7 @@ public class LifecycleApiTests : ApiTestBase
     {
         var personnelId = await SeedPersonnelAsync("4000000007");
         var positionId = await SeedPositionAsync("POS7");
-        var file = new ByteArrayContent(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00 });
+        var file = new ByteArrayContent(TestImages.Png1x1);
         file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
         (await _session.Client.PostAsync($"/api/v1/organization/personnel/{personnelId}/signature",
             new MultipartFormDataContent { { file, "file", "signature.png" } })).StatusCode.ShouldBe(HttpStatusCode.Created);

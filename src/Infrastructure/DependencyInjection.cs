@@ -38,6 +38,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<IAccessEvaluator, AccessEvaluator>();
         builder.Services.AddScoped<IAdminAuthority, AdminAuthority>();
         builder.Services.AddScoped<IExternalOrganizationResolver, ExternalOrganizationResolver>();
+        builder.Services.AddSingleton<ISignatureImageValidator, ImageSharpSignatureValidator>();
 
         builder.Services.AddAuthentication(IdentityConstants.BearerScheme)
             .AddBearerToken(IdentityConstants.BearerScheme);

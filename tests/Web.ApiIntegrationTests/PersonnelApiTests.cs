@@ -415,7 +415,7 @@ public class PersonnelApiTests : ApiTestBase
         var createResult = await createResponse.Content.ReadFromJsonAsync<CreatePersonnelResponse>();
         var personnelId = createResult!.Id;
 
-        var fileContent = new ByteArrayContent(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+        var fileContent = new ByteArrayContent(TestImages.Png1x1);
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
         var content = new MultipartFormDataContent
         {
@@ -558,7 +558,7 @@ public class PersonnelApiTests : ApiTestBase
 
     private static async Task<HttpResponseMessage> UploadPngAsync(HttpClient client, Guid personnelId)
     {
-        var fileContent = new ByteArrayContent(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00 });
+        var fileContent = new ByteArrayContent(TestImages.Png1x1);
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
         var content = new MultipartFormDataContent { { fileContent, "file", "signature.png" } };
         return await client.PostAsync($"/api/v1/organization/personnel/{personnelId}/signature", content);
