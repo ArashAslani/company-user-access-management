@@ -1,4 +1,5 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Application.Organization.Personnel.Queries;
 using CompanyAccessManagement.Domain.Organization;
 using MediatR;
@@ -14,15 +15,20 @@ public record GetPersonnelDetailQuery : IRequest<PersonnelDetailDto?>
 public class GetPersonnelDetailQueryHandler : IRequestHandler<GetPersonnelDetailQuery, PersonnelDetailDto?>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentWorkspace _workspace;
 
-    public GetPersonnelDetailQueryHandler(IApplicationDbContext context)
+    public GetPersonnelDetailQueryHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
+        _workspace = workspace;
     }
 
     public async Task<PersonnelDetailDto?> Handle(GetPersonnelDetailQuery request, CancellationToken cancellationToken)
     {
+        var companyId = _workspace.RequireCompanyId();
+
         var personnel = await _context.Personnel
+            .VisibleIn(_context, companyId)
             .Include(p => p.Positions)
                 .ThenInclude(pp => pp.Position)
             .Include(p => p.Signatures)
@@ -41,10 +47,10 @@ public class GetPersonnelDetailQueryHandler : IRequestHandler<GetPersonnelDetail
             NationalCode = personnel.NationalCode,
             Gender = personnel.Gender,
             PhoneNumber = personnel.PhoneNumber,
-            CompanyId = personnel.Positions.FirstOrDefault(pp => pp.Position != null && pp.IsCurrentlyEffective())?.Position?.CompanyId ?? Guid.Empty,
+            CompanyId = companyId,
             Status = personnel.Status,
             Positions = personnel.Positions
-                .Where(p => p.IsActive)
+                .Where(p => p.IsActive && p.Position?.CompanyId == companyId)
                 .OrderBy(p => p.EffectiveFrom)
                 .Select(p => new PersonnelPositionDto
                 {

@@ -1,6 +1,7 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.AccessControl.Roles.Queries;
 using CompanyAccessManagement.Application.Common.Models;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.AccessControl;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -21,10 +22,12 @@ public record GetRolesQuery : IRequest<PaginatedList<RoleDto>>
 public class GetRolesQueryHandler : IRequestHandler<GetRolesQuery, PaginatedList<RoleDto>>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentWorkspace _workspace;
 
-    public GetRolesQueryHandler(IApplicationDbContext context)
+    public GetRolesQueryHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
+        _workspace = workspace;
     }
 
     public async Task<PaginatedList<RoleDto>> Handle(GetRolesQuery request, CancellationToken cancellationToken)
@@ -33,8 +36,8 @@ public class GetRolesQueryHandler : IRequestHandler<GetRolesQuery, PaginatedList
             .Include(r => r.UserRoles)
             .AsQueryable();
 
-        if (request.CompanyId.HasValue)
-            query = query.Where(r => r.CompanyId == request.CompanyId.Value);
+        var companyId = _workspace.EnsureCompany(request.CompanyId);
+        query = query.Where(r => r.CompanyId == companyId);
 
         if (request.ApplicationId.HasValue)
             query = query.Where(r => r.ApplicationId == request.ApplicationId.Value);

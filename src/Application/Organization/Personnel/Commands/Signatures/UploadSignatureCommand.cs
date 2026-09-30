@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,16 +18,21 @@ public class UploadSignatureCommandHandler : IRequestHandler<UploadSignatureComm
 {
     private readonly IApplicationDbContext _context;
     private readonly IUser _user;
+    private readonly ICurrentWorkspace _workspace;
 
-    public UploadSignatureCommandHandler(IApplicationDbContext context, IUser user)
+    public UploadSignatureCommandHandler(IApplicationDbContext context, IUser user, ICurrentWorkspace workspace)
     {
         _context = context;
         _user = user;
+        _workspace = workspace;
     }
 
     public async Task<Guid> Handle(UploadSignatureCommand request, CancellationToken cancellationToken)
     {
+        var companyId = _workspace.RequireCompanyId();
+
         var personnel = await _context.Personnel
+            .VisibleIn(_context, companyId)
             .Include(p => p.Signatures)
             .FirstOrDefaultAsync(p => p.Id == request.PersonnelId, cancellationToken);
 

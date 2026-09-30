@@ -398,8 +398,8 @@ public class PositionApiTests : ApiTestBase
 
         var response = await UpdatePositionParentAsync(session, a, "A", otherPositionId);
 
-        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
-        (await ReadProblemCodeAsync(response)).ShouldBe("POSITION_PARENT_COMPANY_MISMATCH");
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await WithDbAsync(db => db.Positions.AsNoTracking().Where(p => p.Id == a).Select(p => p.ParentPositionId).SingleAsync())).ShouldBeNull();
     }
 
     [Test]

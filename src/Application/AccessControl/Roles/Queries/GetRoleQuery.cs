@@ -1,11 +1,6 @@
-#pragma warning disable CS8602
-#pragma warning disable CS8632
-
 using CompanyAccessManagement.Application.Common.Interfaces;
-using CompanyAccessManagement.Application.AccessControl.Roles.Queries;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.AccessControl;
-using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace CompanyAccessManagement.Application.AccessControl.Roles.Queries;
 
@@ -17,43 +12,53 @@ public record GetRoleQuery : IRequest<RoleDetailDto?>
 public class GetRoleQueryHandler : IRequestHandler<GetRoleQuery, RoleDetailDto?>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentWorkspace _workspace;
 
-    public GetRoleQueryHandler(IApplicationDbContext context)
+    public GetRoleQueryHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
+        _workspace = workspace;
     }
 
     public async Task<RoleDetailDto?> Handle(GetRoleQuery request, CancellationToken cancellationToken)
     {
+        var companyId = _workspace.RequireCompanyId();
+
         var role = await _context.Roles
+            .AsNoTracking()
             .Include(r => r.ParentRole)
             .Include(r => r.Children)
+                .ThenInclude(c => c.UserRoles)
             .Include(r => r.UserRoles)
                 .ThenInclude(ur => ur.UserCompany)
-            .Include(r => r.AccessRules)
-                .ThenInclude(ar => ar.Permission)
-                    .ThenInclude(p => p.Resource)
-            .Include(r => r.AccessRules)
-                .ThenInclude(ar => ar.Scopes)
-            .FirstOrDefaultAsync(r => r.Id == request.Id, cancellationToken);
+            .FirstOrDefaultAsync(r => r.Id == request.Id && r.CompanyId == companyId, cancellationToken);
 
         if (role is null)
             return null;
 
-        var r = role!;
+        var rules = await (from ap in _context.AuthPrincipals
+                           join ar in _context.AccessRules on ap.Id equals ar.PrincipalId
+                           where ap.Type == PrincipalType.Role && ap.ReferenceId == role.Id
+                               && ap.CompanyId == role.CompanyId && ap.ApplicationId == role.ApplicationId
+                           select ar)
+            .AsNoTracking()
+            .Include(ar => ar.Scopes)
+            .Include(ar => ar.Permission)
+                .ThenInclude(p => p!.Resource)
+            .ToListAsync(cancellationToken);
 
-        var dto = new RoleDetailDto
+        return new RoleDetailDto
         {
-            Id = r.Id,
-            Code = r.Code,
-            Title = r.Name,
-            Description = r.Description ?? string.Empty,
-            Kind = r.Kind,
-            Status = r.Status,
-            ValidUntil = r.ValidUntil,
-            ParentRoleId = r.ParentRoleId,
-            ParentRoleTitle = r.ParentRole?.Name,
-            Children = r.Children.Select(c => new RoleDto
+            Id = role.Id,
+            Code = role.Code,
+            Title = role.Name,
+            Description = role.Description ?? string.Empty,
+            Kind = role.Kind,
+            Status = role.Status,
+            ValidUntil = role.ValidUntil,
+            ParentRoleId = role.ParentRoleId,
+            ParentRoleTitle = role.ParentRole?.Name,
+            Children = role.Children.Select(c => new RoleDto
             {
                 Id = c.Id,
                 Code = c.Code,
@@ -61,28 +66,24 @@ public class GetRoleQueryHandler : IRequestHandler<GetRoleQuery, RoleDetailDto?>
                 UserCount = c.UserRoles.Count,
                 Status = c.Status
             }).ToList(),
-            Users = r.UserRoles.Select(ur => new UserDto
+            Users = role.UserRoles.Select(ur => new UserDto
             {
                 UserId = ur.UserCompany?.UserId ?? Guid.Empty,
                 FullName = ur.UserCompany?.UserId.ToString() ?? string.Empty
             }).ToList(),
-            Permissions = r.AccessRules
-                .Where(ar => ar.Effect == AccessEffect.Allow)
-                .Select(ar => new PermissionDto
+            Permissions = rules.Select(ar => new PermissionDto
+            {
+                ResourceId = ar.Permission?.ResourceId ?? Guid.Empty,
+                ResourceName = ar.Permission?.Resource?.Name ?? string.Empty,
+                ActionCode = ar.Permission?.ActionCode ?? string.Empty,
+                Effect = ar.Effect,
+                ScopeMode = ar.ScopeMode.ToString(),
+                Scopes = ar.Scopes.Select(s => new ScopeDto
                 {
-                    ResourceId = ar.Permission?.ResourceId ?? Guid.Empty,
-                    ResourceName = ar.Permission?.Resource?.Name ?? string.Empty,
-                    ActionCode = ar.Permission?.ActionCode ?? string.Empty,
-                    Effect = ar.Effect,
-                    ScopeMode = ar.ScopeMode.ToString(),
-                    Scopes = ar.Scopes.Select(s => new ScopeDto
-                    {
-                        ScopeType = s.ScopeType,
-                        ScopeKey = s.ScopeKey
-                    }).ToList()
+                    ScopeType = s.ScopeType,
+                    ScopeKey = s.ScopeKey
                 }).ToList()
+            }).ToList()
         };
-
-        return dto;
     }
 }

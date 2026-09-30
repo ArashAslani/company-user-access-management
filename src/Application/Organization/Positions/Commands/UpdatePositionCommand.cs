@@ -1,5 +1,6 @@
 using CompanyAccessManagement.Application.Common.Hierarchy;
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.Common;
 using CompanyAccessManagement.Domain.Organization;
 
@@ -18,28 +19,29 @@ public record UpdatePositionCommand : IRequest
 public class UpdatePositionCommandHandler : IRequestHandler<UpdatePositionCommand>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentWorkspace _workspace;
 
-    public UpdatePositionCommandHandler(IApplicationDbContext context)
+    public UpdatePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
+        _workspace = workspace;
     }
 
     public async Task Handle(UpdatePositionCommand request, CancellationToken cancellationToken)
     {
+        var companyId = _workspace.RequireCompanyId();
+
         var position = await _context.Positions
-            .FirstOrDefaultAsync(p => p.Id == request.Id, cancellationToken);
+            .FirstOrDefaultAsync(p => p.Id == request.Id && p.CompanyId == companyId, cancellationToken);
 
         Guard.Against.NotFound(request.Id, position);
 
         if (request.ParentPositionId.HasValue)
         {
             var parent = await _context.Positions
-                .FirstOrDefaultAsync(p => p.Id == request.ParentPositionId.Value, cancellationToken);
+                .FirstOrDefaultAsync(p => p.Id == request.ParentPositionId.Value && p.CompanyId == companyId, cancellationToken);
 
             Guard.Against.NotFound(request.ParentPositionId.Value, parent);
-
-            if (parent.CompanyId != position.CompanyId)
-                throw new DomainRuleViolationException("POSITION_PARENT_COMPANY_MISMATCH", "Parent position must belong to the same company.");
 
             await HierarchyCycle.EnsureAcyclicAsync(
                 position.Id,

@@ -1,4 +1,5 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,15 +18,22 @@ public class AssignPositionCommandHandler : IRequestHandler<AssignPositionComman
 {
     private readonly IApplicationDbContext _context;
     private readonly TimeProvider _timeProvider;
+    private readonly ICurrentWorkspace _workspace;
 
-    public AssignPositionCommandHandler(IApplicationDbContext context, TimeProvider timeProvider)
+    public AssignPositionCommandHandler(IApplicationDbContext context, TimeProvider timeProvider, ICurrentWorkspace workspace)
     {
         _context = context;
         _timeProvider = timeProvider;
+        _workspace = workspace;
     }
 
     public async Task<Guid> Handle(AssignPositionCommand request, CancellationToken cancellationToken)
     {
+        var companyId = _workspace.RequireCompanyId();
+
+        if (!await PersonnelWorkspaceScope.IsPositionInCompanyAsync(_context, request.PositionId, companyId, cancellationToken))
+            throw new NotFoundException(request.PositionId.ToString(), "Position");
+
         var personnel = await _context.Personnel
             .Include(p => p.Positions)
             .FirstOrDefaultAsync(p => p.Id == request.PersonnelId, cancellationToken);

@@ -1,5 +1,7 @@
+using CompanyAccessManagement.Application.Common.Exceptions;
 using CompanyAccessManagement.Application.Common.Hierarchy;
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.AccessControl;
 using CompanyAccessManagement.Domain.Common;
 
@@ -20,28 +22,33 @@ public record UpdateRoleCommand : IRequest
 public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentWorkspace _workspace;
 
-    public UpdateRoleCommandHandler(IApplicationDbContext context)
+    public UpdateRoleCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
+        _workspace = workspace;
     }
 
     public async Task Handle(UpdateRoleCommand request, CancellationToken cancellationToken)
     {
+        var companyId = _workspace.RequireCompanyId();
+
         var role = await _context.Roles
-            .FirstOrDefaultAsync(r => r.Id == request.Id, cancellationToken);
+            .FirstOrDefaultAsync(r => r.Id == request.Id && r.CompanyId == companyId, cancellationToken);
 
         Guard.Against.NotFound(request.Id, role);
+
+        // Super-admin roles cannot be edited, and no role can be escalated to one, through the API.
+        if (role.Kind != RoleKind.Standard || request.Kind != RoleKind.Standard)
+            throw new ForbiddenAccessException();
 
         if (request.ParentRoleId.HasValue)
         {
             var parent = await _context.Roles
-                .FirstOrDefaultAsync(r => r.Id == request.ParentRoleId.Value, cancellationToken);
+                .FirstOrDefaultAsync(r => r.Id == request.ParentRoleId.Value && r.CompanyId == companyId, cancellationToken);
 
             Guard.Against.NotFound(request.ParentRoleId.Value, parent);
-
-            if (parent.CompanyId != role.CompanyId)
-                throw new DomainRuleViolationException("ROLE_PARENT_COMPANY_MISMATCH", "Parent role must belong to the same company.");
 
             if (parent.ApplicationId != role.ApplicationId)
                 throw new DomainRuleViolationException("ROLE_PARENT_APPLICATION_MISMATCH", "Parent role must belong to the same application.");
@@ -50,7 +57,7 @@ public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand>
                 role.Id,
                 request.ParentRoleId,
                 async (id, ct) => await _context.Roles
-                    .Where(r => r.Id == id && r.CompanyId == role.CompanyId && r.ApplicationId == role.ApplicationId)
+                    .Where(r => r.Id == id && r.CompanyId == companyId && r.ApplicationId == role.ApplicationId)
                     .Select(r => r.ParentRoleId)
                     .FirstOrDefaultAsync(ct),
                 cancellationToken,
@@ -58,12 +65,12 @@ public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand>
         }
 
         var codeExists = await _context.Roles
-            .AnyAsync(r => r.CompanyId == role.CompanyId && r.ApplicationId == role.ApplicationId && r.Code == request.Code && r.Id != request.Id, cancellationToken);
+            .AnyAsync(r => r.CompanyId == companyId && r.ApplicationId == role.ApplicationId && r.Code == request.Code && r.Id != request.Id, cancellationToken);
 
         if (codeExists)
             throw new DomainRuleViolationException("ROLE_CODE_DUPLICATE", "Role code must be unique within the company and application.");
 
-        role.UpdateDetails(request.Name, request.Kind, request.ValidUntil);
+        role.UpdateDetails(request.Name, request.ValidUntil);
         role.UpdateCodeAndDescription(request.Code, request.Description);
 
         if (request.ParentRoleId != role.ParentRoleId)

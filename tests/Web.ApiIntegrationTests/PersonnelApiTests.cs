@@ -561,8 +561,11 @@ public class PersonnelApiTests : ApiTestBase
             return position.Id;
         });
 
+        var otherCompanyId = await WithDbAsync(async db => await db.Positions.Where(p => p.Id == otherCompanyPosition).Select(p => p.CompanyId).SingleAsync());
+        var otherSession = await CreateAuthorizedClientAsync("other@test.com", otherCompanyId, "Organization.PersonnelPosition.Create");
+
         await AssignAsync(session.Client, personnelId, positionA, DateTime.UtcNow.AddDays(-5), DateTime.UtcNow.AddDays(5), isPrimary: true);
-        await AssignAsync(session.Client, personnelId, otherCompanyPosition, DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(10), isPrimary: true);
+        await AssignAsync(otherSession.Client, personnelId, otherCompanyPosition, DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(10), isPrimary: true);
 
         await WithDbAsync(async db =>
             (await db.PersonnelPositions.AsNoTracking().CountAsync(pp => pp.PersonnelId == personnelId && pp.IsPrimary)).ShouldBe(2));

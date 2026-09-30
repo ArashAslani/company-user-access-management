@@ -1,4 +1,5 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Application.Organization.Positions.Queries;
 using CompanyAccessManagement.Domain.Organization;
 using MediatR;
@@ -14,18 +15,22 @@ public record GetPositionSummaryQuery : IRequest<PositionSummaryDto?>
 public class GetPositionSummaryQueryHandler : IRequestHandler<GetPositionSummaryQuery, PositionSummaryDto?>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentWorkspace _workspace;
 
-    public GetPositionSummaryQueryHandler(IApplicationDbContext context)
+    public GetPositionSummaryQueryHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
+        _workspace = workspace;
     }
 
     public async Task<PositionSummaryDto?> Handle(GetPositionSummaryQuery request, CancellationToken cancellationToken)
     {
+        var companyId = _workspace.RequireCompanyId();
+
         var position = await _context.Positions
             .Include(p => p.Assignments)
                 .ThenInclude(pp => pp.Personnel)
-            .FirstOrDefaultAsync(p => p.Id == request.Id, cancellationToken);
+            .FirstOrDefaultAsync(p => p.Id == request.Id && p.CompanyId == companyId, cancellationToken);
 
         if (position == null)
             return null;

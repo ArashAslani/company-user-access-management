@@ -1,4 +1,6 @@
+using CompanyAccessManagement.Application.Common.Exceptions;
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.AccessControl;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -28,18 +30,25 @@ public record RolePermissionAction
 public class UpdateRolePermissionsCommandHandler : IRequestHandler<UpdateRolePermissionsCommand>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentWorkspace _workspace;
 
-    public UpdateRolePermissionsCommandHandler(IApplicationDbContext context)
+    public UpdateRolePermissionsCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
+        _workspace = workspace;
     }
 
     public async Task Handle(UpdateRolePermissionsCommand request, CancellationToken cancellationToken)
     {
+        var companyId = _workspace.RequireCompanyId();
+
         var role = await _context.Roles
-            .FirstOrDefaultAsync(r => r.Id == request.RoleId, cancellationToken);
+            .FirstOrDefaultAsync(r => r.Id == request.RoleId && r.CompanyId == companyId, cancellationToken);
 
         Guard.Against.NotFound(request.RoleId, role);
+
+        if (role.Kind != RoleKind.Standard)
+            throw new ForbiddenAccessException();
 
         var principal = await _context.AuthPrincipals
             .Include(ap => ap.AccessRules)

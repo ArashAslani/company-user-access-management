@@ -401,8 +401,8 @@ public class RoleApiTests : ApiTestBase
 
         var response = await UpdateRoleParentAsync(session, a, "A", otherRoleId);
 
-        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
-        (await ReadProblemCodeAsync(response)).ShouldBe("ROLE_PARENT_COMPANY_MISMATCH");
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await WithDbAsync(db => db.BusinessRoles.AsNoTracking().Where(r => r.Id == a).Select(r => r.ParentRoleId).SingleAsync())).ShouldBeNull();
     }
 
     [Test]

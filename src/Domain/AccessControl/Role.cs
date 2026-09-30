@@ -40,10 +40,9 @@ public sealed class Role : BaseAuditableEntity<Guid>
         Status = RoleStatus.Active;
     }
 
-    public void UpdateDetails(string name, RoleKind kind, DateTime? validUntil)
+    public void UpdateDetails(string name, DateTime? validUntil)
     {
         Name = name;
-        Kind = kind;
         ValidUntil = validUntil;
     }
 

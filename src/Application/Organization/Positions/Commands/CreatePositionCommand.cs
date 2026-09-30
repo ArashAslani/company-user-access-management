@@ -1,5 +1,6 @@
 using CompanyAccessManagement.Application.Common.Hierarchy;
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.Common;
 using CompanyAccessManagement.Domain.Organization;
 
@@ -20,29 +21,30 @@ public record CreatePositionCommand : IRequest<Guid>
 public class CreatePositionCommandHandler : IRequestHandler<CreatePositionCommand, Guid>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentWorkspace _workspace;
 
-    public CreatePositionCommandHandler(IApplicationDbContext context)
+    public CreatePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
+        _workspace = workspace;
     }
 
     public async Task<Guid> Handle(CreatePositionCommand request, CancellationToken cancellationToken)
     {
+        var companyId = _workspace.EnsureCompany(request.CompanyId);
+
         if (request.ParentPositionId.HasValue)
         {
             var parent = await _context.Positions
-                .FirstOrDefaultAsync(p => p.Id == request.ParentPositionId.Value, cancellationToken);
+                .FirstOrDefaultAsync(p => p.Id == request.ParentPositionId.Value && p.CompanyId == companyId, cancellationToken);
 
             Guard.Against.NotFound(request.ParentPositionId.Value, parent);
-
-            if (parent.CompanyId != request.CompanyId)
-                throw new DomainRuleViolationException("POSITION_PARENT_COMPANY_MISMATCH", "Parent position must belong to the same company.");
 
             await HierarchyCycle.EnsureAcyclicAsync(
                 Guid.Empty,
                 request.ParentPositionId,
                 async (id, ct) => await _context.Positions
-                    .Where(p => p.Id == id && p.CompanyId == request.CompanyId)
+                    .Where(p => p.Id == id && p.CompanyId == companyId)
                     .Select(p => p.ParentPositionId)
                     .FirstOrDefaultAsync(ct),
                 cancellationToken,
@@ -50,12 +52,12 @@ public class CreatePositionCommandHandler : IRequestHandler<CreatePositionComman
         }
 
         var codeExists = await _context.Positions
-            .AnyAsync(p => p.CompanyId == request.CompanyId && p.Code == request.Code, cancellationToken);
+            .AnyAsync(p => p.CompanyId == companyId && p.Code == request.Code, cancellationToken);
 
         if (codeExists)
             throw new DomainRuleViolationException("POSITION_CODE_DUPLICATE", "Position code must be unique within the company.");
 
-        var position = new Position(request.CompanyId, request.Code, request.Title, null, request.ParentPositionId);
+        var position = new Position(companyId, request.Code, request.Title, null, request.ParentPositionId);
         position.SetStatus(request.Status);
 
         _context.Positions.Add(position);

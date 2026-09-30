@@ -1,7 +1,7 @@
+using CompanyAccessManagement.Application.Common.Exceptions;
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.AccessControl;
-using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace CompanyAccessManagement.Application.AccessControl.Roles.Commands.BulkAssignRole;
 
@@ -16,26 +16,36 @@ public record BulkAssignRoleResult(int CreatedUserRoleCount);
 public class BulkAssignRoleCommandHandler : IRequestHandler<BulkAssignRoleCommand, BulkAssignRoleResult>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentWorkspace _workspace;
 
-    public BulkAssignRoleCommandHandler(IApplicationDbContext context)
+    public BulkAssignRoleCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
+        _workspace = workspace;
     }
 
     public async Task<BulkAssignRoleResult> Handle(BulkAssignRoleCommand request, CancellationToken cancellationToken)
     {
-        var role = await _context.Roles
-            .FirstOrDefaultAsync(r => r.Id == request.RoleId, cancellationToken);
+        var companyId = _workspace.RequireCompanyId();
 
-        if (role == null)
-            throw new InvalidOperationException($"Role with ID {request.RoleId} not found.");
+        var role = await _context.Roles
+            .FirstOrDefaultAsync(r => r.Id == request.RoleId && r.CompanyId == companyId, cancellationToken);
+
+        Guard.Against.NotFound(request.RoleId, role);
+
+        if (role.Kind != RoleKind.Standard)
+            throw new ForbiddenAccessException();
+
+        var requestedIds = request.UserCompanyIds.Distinct().ToArray();
 
         var userCompanies = await _context.UserCompanies
-            .Where(uc => request.UserCompanyIds.Contains(uc.Id))
+            .Include(uc => uc.Roles)
+            .Where(uc => requestedIds.Contains(uc.Id) && uc.CompanyId == companyId)
             .ToListAsync(cancellationToken);
 
-        if (userCompanies.Count != request.UserCompanyIds.Length)
-            throw new InvalidOperationException("One or more UserCompany IDs not found.");
+        var missing = requestedIds.Except(userCompanies.Select(uc => uc.Id)).FirstOrDefault();
+        if (missing != Guid.Empty)
+            throw new NotFoundException(missing.ToString(), "UserCompany");
 
         int created = 0;
         foreach (var uc in userCompanies)

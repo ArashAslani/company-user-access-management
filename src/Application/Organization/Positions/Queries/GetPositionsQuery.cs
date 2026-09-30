@@ -1,5 +1,6 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Models;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.Organization;
 using AutoMapper;
 using MediatR;
@@ -20,12 +21,12 @@ public record GetPositionsQuery : IRequest<PaginatedList<PositionDto>>
 public class GetPositionsQueryHandler : IRequestHandler<GetPositionsQuery, PaginatedList<PositionDto>>
 {
     private readonly IApplicationDbContext _context;
-    private readonly IMapper _mapper;
+    private readonly ICurrentWorkspace _workspace;
 
-    public GetPositionsQueryHandler(IApplicationDbContext context, IMapper mapper)
+    public GetPositionsQueryHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
-        _mapper = mapper;
+        _workspace = workspace;
     }
 
     public async Task<PaginatedList<PositionDto>> Handle(GetPositionsQuery request, CancellationToken cancellationToken)
@@ -35,8 +36,8 @@ public class GetPositionsQueryHandler : IRequestHandler<GetPositionsQuery, Pagin
             .Include(p => p.Assignments)
             .AsQueryable();
 
-        if (request.CompanyId.HasValue)
-            query = query.Where(p => p.CompanyId == request.CompanyId.Value);
+        var companyId = _workspace.EnsureCompany(request.CompanyId);
+        query = query.Where(p => p.CompanyId == companyId);
 
         if (!string.IsNullOrWhiteSpace(request.Status) && Enum.TryParse<PositionStatus>(request.Status, true, out var status))
             query = query.Where(p => p.Status == status);

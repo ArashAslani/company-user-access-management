@@ -1,4 +1,6 @@
+using CompanyAccessManagement.Application.Common.Exceptions;
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.AccessControl;
 using CompanyAccessManagement.Domain.Common;
 using MediatR;
@@ -16,10 +18,12 @@ public record CopyRolePermissionsCommand : IRequest<int>
 public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermissionsCommand, int>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentWorkspace _workspace;
 
-    public CopyRolePermissionsCommandHandler(IApplicationDbContext context)
+    public CopyRolePermissionsCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
+        _workspace = workspace;
     }
 
     public async Task<int> Handle(CopyRolePermissionsCommand request, CancellationToken cancellationToken)
@@ -30,10 +34,15 @@ public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermiss
         if (request.Mode is not ("APPEND" or "REPLACE"))
             throw new DomainRuleViolationException("ROLE_COPY_INVALID_MODE", "Mode must be APPEND or REPLACE.");
 
+        var companyId = _workspace.RequireCompanyId();
+
         var targetRole = await _context.Roles
-            .FirstOrDefaultAsync(r => r.Id == request.RoleId, cancellationToken);
+            .FirstOrDefaultAsync(r => r.Id == request.RoleId && r.CompanyId == companyId, cancellationToken);
 
         Guard.Against.NotFound(request.RoleId, targetRole);
+
+        if (targetRole.Kind != RoleKind.Standard)
+            throw new ForbiddenAccessException();
 
         var sourceRole = await _context.Roles
             .FirstOrDefaultAsync(r => r.Id == request.SourceRoleId && r.CompanyId == targetRole.CompanyId && r.ApplicationId == targetRole.ApplicationId, cancellationToken);

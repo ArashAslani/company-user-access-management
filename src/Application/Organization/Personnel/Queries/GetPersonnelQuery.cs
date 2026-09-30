@@ -1,4 +1,5 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Application.Common.Models;
 using CompanyAccessManagement.Application.Organization.Personnel.Queries;
 using CompanyAccessManagement.Domain.Organization;
@@ -20,10 +21,12 @@ public record GetPersonnelQuery : IRequest<PaginatedList<PersonnelDto>>
 public class GetPersonnelQueryHandler : IRequestHandler<GetPersonnelQuery, PaginatedList<PersonnelDto>>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentWorkspace _workspace;
 
-    public GetPersonnelQueryHandler(IApplicationDbContext context)
+    public GetPersonnelQueryHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
+        _workspace = workspace;
     }
 
     public async Task<PaginatedList<PersonnelDto>> Handle(GetPersonnelQuery request, CancellationToken cancellationToken)
@@ -33,14 +36,8 @@ public class GetPersonnelQueryHandler : IRequestHandler<GetPersonnelQuery, Pagin
                 .ThenInclude(pp => pp.Position)
             .AsQueryable();
 
-        if (request.CompanyId.HasValue)
-        {
-            var companyId = request.CompanyId.Value;
-            query = query.Where(p => _context.PersonnelPositions
-                .Where(pp => pp.PersonnelId == p.Id && pp.Status == PersonnelPositionStatus.Active)
-                .Join(_context.Positions, pp => pp.PositionId, pos => pos.Id, (pp, pos) => pos.CompanyId)
-                .Any(cid => cid == companyId));
-        }
+        var companyId = _workspace.EnsureCompany(request.CompanyId);
+        query = query.VisibleIn(_context, companyId);
 
         if (!string.IsNullOrWhiteSpace(request.Status) && Enum.TryParse<PersonnelStatus>(request.Status, true, out var status))
             query = query.Where(p => p.Status == status);
@@ -79,8 +76,9 @@ public class GetPersonnelQueryHandler : IRequestHandler<GetPersonnelQuery, Pagin
 
         var items = personnelList.Select(p =>
         {
-            var effectivePos = p.Positions.FirstOrDefault(pp => pp.Position != null && pp.IsCurrentlyEffective());
-            var primaryPos = p.Positions.FirstOrDefault(pp => pp.IsPrimary && pp.IsCurrentlyEffective());
+            var workspacePositions = p.Positions.Where(pp => pp.Position?.CompanyId == companyId).ToList();
+            var effectivePos = workspacePositions.FirstOrDefault(pp => pp.IsCurrentlyEffective());
+            var primaryPos = workspacePositions.FirstOrDefault(pp => pp.IsPrimary && pp.IsCurrentlyEffective());
 
             return new PersonnelDto
             {
@@ -88,8 +86,8 @@ public class GetPersonnelQueryHandler : IRequestHandler<GetPersonnelQuery, Pagin
                 PrimaryPersonnelCode = p.PersonnelCode ?? string.Empty,
                 FullName = p.FirstName + " " + p.LastName,
                 NationalCode = p.NationalCode,
-                CompanyId = effectivePos?.Position?.CompanyId ?? Guid.Empty,
-                CompanyName = effectivePos?.Position?.CompanyId.ToString() ?? string.Empty,
+                CompanyId = companyId,
+                CompanyName = companyId.ToString(),
                 PrimaryPositionTitle = primaryPos?.Position?.Title ?? string.Empty,
                 Status = p.Status,
                 SignatureStatus = p.GetCurrentSignature() != null ? "Registered" : "NotRegistered"

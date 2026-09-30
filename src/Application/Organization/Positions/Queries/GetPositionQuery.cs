@@ -1,5 +1,6 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Mappings;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Application.Organization.Positions.Queries;
 using CompanyAccessManagement.Domain.Organization;
 using AutoMapper;
@@ -16,22 +17,24 @@ public record GetPositionQuery : IRequest<PositionDetailDto?>
 public class GetPositionQueryHandler : IRequestHandler<GetPositionQuery, PositionDetailDto?>
 {
     private readonly IApplicationDbContext _context;
-    private readonly IMapper _mapper;
+    private readonly ICurrentWorkspace _workspace;
 
-    public GetPositionQueryHandler(IApplicationDbContext context, IMapper mapper)
+    public GetPositionQueryHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
-        _mapper = mapper;
+        _workspace = workspace;
     }
 
     public async Task<PositionDetailDto?> Handle(GetPositionQuery request, CancellationToken cancellationToken)
     {
+        var companyId = _workspace.RequireCompanyId();
+
         var position = await _context.Positions
             .Include(p => p.ParentPosition)
             .Include(p => p.Children)
             .Include(p => p.Assignments)
                 .ThenInclude(pp => pp.Personnel)
-            .FirstOrDefaultAsync(p => p.Id == request.Id, cancellationToken);
+            .FirstOrDefaultAsync(p => p.Id == request.Id && p.CompanyId == companyId, cancellationToken);
 
         if (position == null)
             return null;
@@ -62,7 +65,7 @@ public class GetPositionQueryHandler : IRequestHandler<GetPositionQuery, Positio
                 .Where(a => a.IsCurrentlyEffective())
                 .Select(a => new PersonnelPositionDto
                 {
-                    PersonnelPositionId = a.PersonnelId,
+                    PersonnelPositionId = a.Id,
                     PositionId = a.PositionId,
                     PositionCode = position.Code,
                     PositionTitle = position.Title,

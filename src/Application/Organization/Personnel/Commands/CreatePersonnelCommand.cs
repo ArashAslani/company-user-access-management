@@ -1,4 +1,6 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
+using CompanyAccessManagement.Domain.Common;
 using CompanyAccessManagement.Domain.Organization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -20,20 +22,24 @@ public record CreatePersonnelCommand : IRequest<Guid>
 public class CreatePersonnelCommandHandler : IRequestHandler<CreatePersonnelCommand, Guid>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentWorkspace _workspace;
 
-    public CreatePersonnelCommandHandler(IApplicationDbContext context)
+    public CreatePersonnelCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
+        _workspace = workspace;
     }
 
     public async Task<Guid> Handle(CreatePersonnelCommand request, CancellationToken cancellationToken)
     {
+        _workspace.EnsureCompany(request.CompanyId);
+
         // Check duplicate national code
         var exists = await _context.Personnel
             .AnyAsync(p => p.NationalCode == request.NationalCode, cancellationToken);
 
         if (exists)
-            throw new InvalidOperationException("DUPLICATE_NATIONAL_CODE");
+            throw new DomainRuleViolationException("DUPLICATE_NATIONAL_CODE", "National code is already registered.");
 
         var personnel = new CompanyAccessManagement.Domain.Organization.Personnel(
             request.NationalCode, 

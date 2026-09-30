@@ -1,5 +1,6 @@
 using CompanyAccessManagement.Application.Common.Exceptions;
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.Organization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -14,20 +15,23 @@ public record DeletePositionCommand : IRequest
 public class DeletePositionCommandHandler : IRequestHandler<DeletePositionCommand>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentWorkspace _workspace;
 
-    public DeletePositionCommandHandler(IApplicationDbContext context)
+    public DeletePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
     {
         _context = context;
+        _workspace = workspace;
     }
 
     public async Task Handle(DeletePositionCommand request, CancellationToken cancellationToken)
     {
+        var companyId = _workspace.RequireCompanyId();
+
         var position = await _context.Positions
             .Include(p => p.Assignments)
-            .FirstOrDefaultAsync(p => p.Id == request.Id, cancellationToken);
+            .FirstOrDefaultAsync(p => p.Id == request.Id && p.CompanyId == companyId, cancellationToken);
 
-        if (position == null)
-            throw new InvalidOperationException("Position not found.");
+        Guard.Against.NotFound(request.Id, position);
 
         // Check for active assignments
         var activeAssignments = position.Assignments
@@ -36,7 +40,7 @@ public class DeletePositionCommandHandler : IRequestHandler<DeletePositionComman
 
         if (activeAssignments.Any())
         {
-            var assignmentIds = activeAssignments.Select(a => a.PersonnelId).ToList();
+            var assignmentIds = activeAssignments.Select(a => a.Id).ToList();
             throw new ConflictException("Cannot delete position with active personnel assignments.")
             {
                 Data = { ["activePersonnelPositionIds"] = assignmentIds }

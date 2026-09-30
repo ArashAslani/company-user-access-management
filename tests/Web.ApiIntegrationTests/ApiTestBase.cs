@@ -335,9 +335,12 @@ public abstract class ApiTestBase
     /// permission, logs in, and returns a client carrying the bearer token and X-Company-Id header.
     /// </summary>
     /// <param name="permissions">Full permission codes as the endpoints require them, e.g. "Organization.Position.Read".</param>
-    protected async Task<AuthSession> CreateAuthorizedClientAsync(Guid companyId, params string[] permissions)
+    protected Task<AuthSession> CreateAuthorizedClientAsync(Guid companyId, params string[] permissions)
+        => CreateAuthorizedClientAsync("test@test.com", companyId, permissions);
+
+    /// <param name="email">Distinct per session when a test needs several users.</param>
+    protected async Task<AuthSession> CreateAuthorizedClientAsync(string email, Guid companyId, params string[] permissions)
     {
-        const string email = "test@test.com";
         const string password = "Test123!";
 
         var user = await CreateUserAsync(email, password);
