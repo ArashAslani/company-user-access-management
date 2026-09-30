@@ -26,6 +26,8 @@ public record PersonnelDetailDto
     public string? PhoneNumber { get; init; }
     public Guid CompanyId { get; init; }
     public PersonnelStatus Status { get; init; }
+    public string? ExternalSource { get; init; }
+    public string? ExternalId { get; init; }
     public List<PersonnelPositionDto> Positions { get; init; } = new();
     public SignatureDto? Signature { get; init; }
 }
@@ -41,6 +43,8 @@ public record PersonnelPositionDto
     public DateTime? EffectiveTo { get; init; }
     public PersonnelPositionStatus Status { get; init; }
     public string AccessGroupHint { get; init; } = null!;
+    public string? ExternalSource { get; init; }
+    public string? ExternalId { get; init; }
 }
 
 public record SignatureDto

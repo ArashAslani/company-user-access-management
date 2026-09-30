@@ -15,6 +15,8 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
     public string? PhoneNumber { get; private set; }
     public Gender Gender { get; private set; }
     public PersonnelStatus Status { get; private set; }
+    public string? ExternalSource { get; private set; }
+    public string? ExternalId { get; private set; }
 
     private readonly List<PersonnelPosition> _positions = [];
     public IReadOnlyCollection<PersonnelPosition> Positions => _positions.AsReadOnly();
@@ -56,6 +58,8 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
 
         NationalCode = nationalCode;
     }
+
+    public void SetExternalIdentity(string? source, string? id) => (ExternalSource, ExternalId) = ExternalIdentity.Normalize(source, id);
 
     /// <summary>
     /// Explicit status changes. Employment is never set directly: it follows an effective position assignment or

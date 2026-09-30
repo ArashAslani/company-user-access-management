@@ -33,6 +33,8 @@ public record PositionDetailDto : IMapFrom<Position>
     public string CompanyName { get; init; } = null!;
     public Guid? ParentPositionId { get; init; }
     public string? ParentPositionTitle { get; init; }
+    public string? ExternalSource { get; init; }
+    public string? ExternalId { get; init; }
     public List<PositionDto> Children { get; init; } = new();
     public List<PersonnelPositionDto> Personnel { get; init; } = new();
     public PositionStatus Status { get; init; }

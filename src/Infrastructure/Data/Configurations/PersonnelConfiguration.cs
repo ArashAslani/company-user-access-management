@@ -8,7 +8,7 @@ public class PersonnelConfiguration : IEntityTypeConfiguration<Personnel>
 {
     public void Configure(EntityTypeBuilder<Personnel> builder)
     {
-        builder.ToTable("Personnel", "org");
+        builder.ToTable("Personnel", "org", t => t.HasCheckConstraint(ExternalIdentityConfiguration.CheckConstraintName("Personnel"), ExternalIdentityConfiguration.CheckConstraintSql));
 
         builder.HasKey(p => p.Id);
 
@@ -47,6 +47,7 @@ public class PersonnelConfiguration : IEntityTypeConfiguration<Personnel>
 
         builder.HasIndex(p => new { p.CompanyId, p.NationalCode }).IsUnique();
         builder.HasIndex(p => p.Status);
+        builder.HasExternalIdentity(p => new { p.CompanyId, p.ExternalSource, p.ExternalId });
         builder.HasIndex(p => new { p.LastName, p.FirstName });
 
         builder.HasMany(p => p.Positions)

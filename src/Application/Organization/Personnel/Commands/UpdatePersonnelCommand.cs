@@ -1,5 +1,6 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
+using CompanyAccessManagement.Application.Common.Validation;
 using CompanyAccessManagement.Domain.Common;
 using CompanyAccessManagement.Domain.Organization;
 using MediatR;
@@ -7,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CompanyAccessManagement.Application.Organization.Personnel.Commands;
 
-public record UpdatePersonnelCommand : IRequest
+public record UpdatePersonnelCommand : IRequest, IExternalIdentityFields
 {
     public Guid Id { get; set; }
     public string FirstName { get; init; } = null!;
@@ -17,6 +18,8 @@ public record UpdatePersonnelCommand : IRequest
     public string? PhoneNumber { get; init; }
     /// <summary>Omit to keep the current status. Employed cannot be set directly.</summary>
     public PersonnelStatus? Status { get; init; }
+    public string? ExternalSource { get; init; }
+    public string? ExternalId { get; init; }
 }
 
 public class UpdatePersonnelCommandHandler : IRequestHandler<UpdatePersonnelCommand>
@@ -49,8 +52,14 @@ public class UpdatePersonnelCommandHandler : IRequestHandler<UpdatePersonnelComm
         if (exists)
             throw new DomainRuleViolationException("DUPLICATE_NATIONAL_CODE", "National code is already registered in this company.");
 
+        var (externalSource, externalId) = ExternalIdentity.Normalize(request.ExternalSource, request.ExternalId);
+        if (externalSource is not null
+            && await _context.Personnel.AnyAsync(p => p.CompanyId == companyId && p.Id != personnel.Id && p.ExternalSource == externalSource && p.ExternalId == externalId, cancellationToken))
+            throw ExternalIdentityRules.Duplicate("personnel");
+
         personnel.UpdateDetails(request.FirstName, request.LastName, request.PhoneNumber, request.Gender);
         personnel.ChangeNationalCode(request.NationalCode);
+        personnel.SetExternalIdentity(externalSource, externalId);
         if (request.Status is PersonnelStatus status)
             personnel.ChangeStatus(status, _timeProvider.GetUtcNow().UtcDateTime);
 

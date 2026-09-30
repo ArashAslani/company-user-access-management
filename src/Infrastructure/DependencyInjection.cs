@@ -3,6 +3,7 @@ using CompanyAccessManagement.Infrastructure.Authorization;
 using CompanyAccessManagement.Infrastructure.Data;
 using CompanyAccessManagement.Infrastructure.Data.Interceptors;
 using CompanyAccessManagement.Infrastructure.Identity;
+using CompanyAccessManagement.Infrastructure.Organization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -34,6 +35,7 @@ public static class DependencyInjection
 
         builder.Services.AddScoped<IAccessEvaluator, AccessEvaluator>();
         builder.Services.AddScoped<IAdminAuthority, AdminAuthority>();
+        builder.Services.AddScoped<IExternalOrganizationResolver, ExternalOrganizationResolver>();
 
         builder.Services.AddAuthentication(IdentityConstants.BearerScheme)
             .AddBearerToken(IdentityConstants.BearerScheme);

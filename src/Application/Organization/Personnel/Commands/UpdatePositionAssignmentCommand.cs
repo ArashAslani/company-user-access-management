@@ -1,12 +1,14 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
+using CompanyAccessManagement.Application.Common.Validation;
+using CompanyAccessManagement.Domain.Common;
 using CompanyAccessManagement.Domain.Organization;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace CompanyAccessManagement.Application.Organization.Personnel.Commands;
 
-public record UpdatePositionAssignmentCommand : IRequest
+public record UpdatePositionAssignmentCommand : IRequest, IExternalIdentityFields
 {
     public Guid PersonnelId { get; init; }
     public Guid AssignmentId { get; init; }
@@ -14,6 +16,8 @@ public record UpdatePositionAssignmentCommand : IRequest
     public DateTime EffectiveFrom { get; init; }
     public DateTime? EffectiveTo { get; init; }
     public PersonnelPositionStatus Status { get; init; } = PersonnelPositionStatus.Active;
+    public string? ExternalSource { get; init; }
+    public string? ExternalId { get; init; }
 }
 
 public class UpdatePositionAssignmentCommandHandler : IRequestHandler<UpdatePositionAssignmentCommand>
@@ -49,6 +53,10 @@ public class UpdatePositionAssignmentCommandHandler : IRequestHandler<UpdatePosi
         if (request.Status == PersonnelPositionStatus.Active)
             await PositionCompanyLookup.EnsurePositionActiveAsync(_context, assignment.PositionId, cancellationToken);
 
+        var (externalSource, externalId) = ExternalIdentity.Normalize(request.ExternalSource, request.ExternalId);
+        if (externalSource is not null && personnel.Positions.Any(pp => pp.Id != assignment.Id && pp.ExternalSource == externalSource && pp.ExternalId == externalId))
+            throw ExternalIdentityRules.Duplicate("position assignment");
+
         var positionCompanies = await PositionCompanyLookup.LoadAsync(_context, personnel, assignment.PositionId, cancellationToken);
 
         personnel.UpdatePositionAssignment(
@@ -59,6 +67,7 @@ public class UpdatePositionAssignmentCommandHandler : IRequestHandler<UpdatePosi
             request.Status,
             _timeProvider.GetUtcNow().UtcDateTime,
             positionCompanies);
+        assignment.SetExternalIdentity(externalSource, externalId);
 
         await _context.SaveChangesAsync(cancellationToken);
     }

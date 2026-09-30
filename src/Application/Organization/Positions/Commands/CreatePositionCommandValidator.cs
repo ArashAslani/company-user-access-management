@@ -1,3 +1,5 @@
+using CompanyAccessManagement.Application.Common.Validation;
+
 namespace CompanyAccessManagement.Application.Organization.Positions.Commands;
 
 public class CreatePositionCommandValidator : AbstractValidator<CreatePositionCommand>
@@ -8,5 +10,6 @@ public class CreatePositionCommandValidator : AbstractValidator<CreatePositionCo
         RuleFor(c => c.Title).NotEmpty().MaximumLength(100);
         RuleFor(c => c.Description).MaximumLength(500);
         RuleFor(c => c.Status).IsInEnum();
+        this.AddExternalIdentityRules();
     }
 }

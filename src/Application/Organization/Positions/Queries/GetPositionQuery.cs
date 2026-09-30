@@ -53,6 +53,8 @@ public class GetPositionQueryHandler : IRequestHandler<GetPositionQuery, Positio
             CompanyName = position.CompanyId.ToString(),
             ParentPositionId = position.ParentPositionId,
             ParentPositionTitle = position.ParentPosition?.Title,
+            ExternalSource = position.ExternalSource,
+            ExternalId = position.ExternalId,
             Children = position.Children.Select(c => new PositionDto
             {
                 Id = c.Id,

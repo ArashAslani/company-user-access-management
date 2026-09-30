@@ -48,6 +48,8 @@ public class GetPersonnelDetailQueryHandler : IRequestHandler<GetPersonnelDetail
             Gender = personnel.Gender,
             PhoneNumber = personnel.PhoneNumber,
             CompanyId = personnel.CompanyId,
+            ExternalSource = personnel.ExternalSource,
+            ExternalId = personnel.ExternalId,
             Status = personnel.Status,
             Positions = personnel.Positions
                 .Where(p => p.IsActive)
@@ -62,7 +64,9 @@ public class GetPersonnelDetailQueryHandler : IRequestHandler<GetPersonnelDetail
                     EffectiveFrom = p.EffectiveFrom,
                     EffectiveTo = p.EffectiveTo,
                     Status = p.Status,
-                    AccessGroupHint = "Role-based access group hint"
+                    AccessGroupHint = "Role-based access group hint",
+                    ExternalSource = p.ExternalSource,
+                    ExternalId = p.ExternalId
                 }).ToList(),
             Signature = currentSig != null ? new SignatureDto
             {

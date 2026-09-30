@@ -8,7 +8,7 @@ public class PositionConfiguration : IEntityTypeConfiguration<Position>
 {
     public void Configure(EntityTypeBuilder<Position> builder)
     {
-        builder.ToTable("Positions", "org");
+        builder.ToTable("Positions", "org", t => t.HasCheckConstraint(ExternalIdentityConfiguration.CheckConstraintName("Positions"), ExternalIdentityConfiguration.CheckConstraintSql));
 
         builder.HasKey(p => p.Id);
 
@@ -23,6 +23,7 @@ public class PositionConfiguration : IEntityTypeConfiguration<Position>
         builder.HasIndex(p => new { p.CompanyId, p.Code }).IsUnique();
         builder.HasIndex(p => new { p.CompanyId, p.ParentPositionId, p.Status });
         builder.HasIndex(p => new { p.CompanyId, p.Title });
+        builder.HasExternalIdentity(p => new { p.CompanyId, p.ExternalSource, p.ExternalId });
 
         builder.HasOne(p => p.ParentPosition)
             .WithMany(p => p.Children)

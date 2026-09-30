@@ -8,7 +8,7 @@ public class CompanyConfiguration : IEntityTypeConfiguration<Company>
 {
     public void Configure(EntityTypeBuilder<Company> builder)
     {
-        builder.ToTable("Companies", "org");
+        builder.ToTable("Companies", "org", t => t.HasCheckConstraint(ExternalIdentityConfiguration.CheckConstraintName("Companies"), ExternalIdentityConfiguration.CheckConstraintSql));
 
         builder.HasKey(c => c.Id);
 
@@ -21,6 +21,7 @@ public class CompanyConfiguration : IEntityTypeConfiguration<Company>
 
         builder.HasIndex(c => c.Code).IsUnique();
         builder.HasIndex(c => c.ParentCompanyId);
+        builder.HasExternalIdentity(c => new { c.ExternalSource, c.ExternalId });
 
         builder.HasOne(c => c.ParentCompany)
             .WithMany(c => c.Children)

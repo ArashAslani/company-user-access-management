@@ -1,3 +1,5 @@
+using CompanyAccessManagement.Application.Common.Validation;
+
 namespace CompanyAccessManagement.Application.Organization.Personnel.Commands;
 
 internal static class PersonnelRules
@@ -17,6 +19,7 @@ public class CreatePersonnelCommandValidator : AbstractValidator<CreatePersonnel
         RuleFor(c => c.PhoneNumber).MaximumLength(20);
         RuleFor(c => c.Gender).IsInEnum();
         RuleFor(c => c.Status).IsInEnum();
+        this.AddExternalIdentityRules();
     }
 }
 
@@ -31,6 +34,7 @@ public class UpdatePersonnelCommandValidator : AbstractValidator<UpdatePersonnel
         RuleFor(c => c.PhoneNumber).MaximumLength(20);
         RuleFor(c => c.Gender).IsInEnum();
         RuleFor(c => c.Status).IsInEnum();
+        this.AddExternalIdentityRules();
     }
 }
 
@@ -40,6 +44,7 @@ public class AssignPositionCommandValidator : AbstractValidator<AssignPositionCo
     {
         RuleFor(c => c.PositionId).NotEmpty();
         RuleFor(c => c.EffectiveTo).GreaterThan(c => c.EffectiveFrom).When(c => c.EffectiveTo.HasValue);
+        this.AddExternalIdentityRules();
     }
 }
 
@@ -49,5 +54,6 @@ public class UpdatePositionAssignmentCommandValidator : AbstractValidator<Update
     {
         RuleFor(c => c.EffectiveTo).GreaterThan(c => c.EffectiveFrom).When(c => c.EffectiveTo.HasValue);
         RuleFor(c => c.Status).IsInEnum();
+        this.AddExternalIdentityRules();
     }
 }

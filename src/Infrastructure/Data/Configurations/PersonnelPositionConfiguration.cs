@@ -8,7 +8,7 @@ public class PersonnelPositionConfiguration : IEntityTypeConfiguration<Personnel
 {
     public void Configure(EntityTypeBuilder<PersonnelPosition> builder)
     {
-        builder.ToTable("PersonnelPositions", "org");
+        builder.ToTable("PersonnelPositions", "org", t => t.HasCheckConstraint(ExternalIdentityConfiguration.CheckConstraintName("PersonnelPositions"), ExternalIdentityConfiguration.CheckConstraintSql));
 
         builder.HasKey(pp => pp.Id);
         builder.Property(pp => pp.Id).ValueGeneratedNever();
@@ -25,6 +25,7 @@ public class PersonnelPositionConfiguration : IEntityTypeConfiguration<Personnel
         builder.HasIndex(pp => new { pp.PersonnelId, pp.Status });
         builder.HasIndex(pp => new { pp.PositionId, pp.Status });
         builder.HasIndex(pp => new { pp.PersonnelId, pp.EffectiveFrom, pp.EffectiveTo });
+        builder.HasExternalIdentity(pp => new { pp.PersonnelId, pp.ExternalSource, pp.ExternalId });
 
         builder.HasOne(pp => pp.Personnel)
             .WithMany(p => p.Positions)

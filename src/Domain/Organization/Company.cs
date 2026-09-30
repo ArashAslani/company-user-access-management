@@ -10,6 +10,8 @@ public sealed class Company : BaseAuditableEntity<Guid>
     public string Name { get; private set; } = null!;
     public string? Description { get; private set; }
     public CompanyStatus Status { get; private set; }
+    public string? ExternalSource { get; private set; }
+    public string? ExternalId { get; private set; }
 
     public Company? ParentCompany { get; private set; }
     private readonly List<Company> _children = [];
@@ -42,6 +44,8 @@ public sealed class Company : BaseAuditableEntity<Guid>
 
         ParentCompanyId = newParentCompanyId;
     }
+
+    public void SetExternalIdentity(string? source, string? id) => (ExternalSource, ExternalId) = ExternalIdentity.Normalize(source, id);
 }
 
 public enum CompanyStatus { Active, Inactive }

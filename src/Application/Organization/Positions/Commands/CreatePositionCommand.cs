@@ -1,12 +1,13 @@
 using CompanyAccessManagement.Application.Common.Hierarchy;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
+using CompanyAccessManagement.Application.Common.Validation;
 using CompanyAccessManagement.Domain.Common;
 using CompanyAccessManagement.Domain.Organization;
 
 namespace CompanyAccessManagement.Application.Organization.Positions.Commands;
 
-public record CreatePositionCommand : IRequest<Guid>
+public record CreatePositionCommand : IRequest<Guid>, IExternalIdentityFields
 {
     public Guid CompanyId { get; init; }
     public string Code { get; init; } = null!;
@@ -14,6 +15,8 @@ public record CreatePositionCommand : IRequest<Guid>
     public string? Description { get; init; }
     public Guid? ParentPositionId { get; init; }
     public PositionStatus Status { get; init; } = PositionStatus.Active;
+    public string? ExternalSource { get; init; }
+    public string? ExternalId { get; init; }
 }
 
 public class CreatePositionCommandHandler : IRequestHandler<CreatePositionCommand, Guid>
@@ -57,7 +60,13 @@ public class CreatePositionCommandHandler : IRequestHandler<CreatePositionComman
         if (codeExists)
             throw new DomainRuleViolationException("POSITION_CODE_DUPLICATE", "Position code must be unique within the company.");
 
+        var (externalSource, externalId) = ExternalIdentity.Normalize(request.ExternalSource, request.ExternalId);
+        if (externalSource is not null
+            && await _context.Positions.AnyAsync(p => p.CompanyId == companyId && p.ExternalSource == externalSource && p.ExternalId == externalId, cancellationToken))
+            throw ExternalIdentityRules.Duplicate("position");
+
         var position = new Position(companyId, request.Code, request.Title, request.Description, request.ParentPositionId);
+        position.SetExternalIdentity(externalSource, externalId);
         position.SetStatus(request.Status, _timeProvider.GetUtcNow().UtcDateTime);
 
         _context.Positions.Add(position);

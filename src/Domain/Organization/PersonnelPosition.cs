@@ -12,6 +12,8 @@ public sealed class PersonnelPosition : BaseEntity
     public DateTime? EffectiveTo { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime? DeactivatedAt { get; private set; }
+    public string? ExternalSource { get; private set; }
+    public string? ExternalId { get; private set; }
 
     public Personnel? Personnel { get; private set; }
     public Position? Position { get; private set; }
@@ -56,6 +58,8 @@ public sealed class PersonnelPosition : BaseEntity
 
         return EffectiveFrom < otherEnd && otherEffectiveFrom < thisEnd;
     }
+
+    public void SetExternalIdentity(string? source, string? id) => (ExternalSource, ExternalId) = ExternalIdentity.Normalize(source, id);
 
     internal void SetPrimary(bool isPrimary)
     {

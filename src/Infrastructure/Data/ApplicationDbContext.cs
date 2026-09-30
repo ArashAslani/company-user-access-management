@@ -1,10 +1,12 @@
 using System.Reflection;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Domain.AccessControl;
+using CompanyAccessManagement.Domain.Common;
 using CompanyAccessManagement.Domain.Organization;
 using CompanyAccessManagement.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace CompanyAccessManagement.Infrastructure.Data;
@@ -36,6 +38,26 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     // Explicit interface implementation for IApplicationDbContext
     DbSet<Role> IApplicationDbContext.Roles => BusinessRoles;
     DbSet<CompanyAccessManagement.Domain.AccessControl.Application> IApplicationDbContext.Applications => Applications;
+
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsExternalIdentityUniqueViolation(ex))
+        {
+            // A concurrent writer won the race past the handler's pre-check; the filtered unique index is the backstop.
+            throw new DomainRuleViolationException("EXTERNAL_IDENTITY_DUPLICATE", "Another record already uses this external identity.");
+        }
+    }
+
+    private const int SqliteConstraintUnique = 2067;
+
+    private static bool IsExternalIdentityUniqueViolation(DbUpdateException ex)
+        => ex.InnerException is SqliteException { SqliteExtendedErrorCode: SqliteConstraintUnique } sqlite
+            && sqlite.Message.Contains(".ExternalSource", StringComparison.Ordinal)
+            && sqlite.Message.Contains(".ExternalId", StringComparison.Ordinal);
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

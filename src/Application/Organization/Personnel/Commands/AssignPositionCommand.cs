@@ -1,17 +1,21 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
+using CompanyAccessManagement.Application.Common.Validation;
+using CompanyAccessManagement.Domain.Common;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace CompanyAccessManagement.Application.Organization.Personnel.Commands;
 
-public record AssignPositionCommand : IRequest<Guid>
+public record AssignPositionCommand : IRequest<Guid>, IExternalIdentityFields
 {
     public Guid PersonnelId { get; init; }
     public Guid PositionId { get; init; }
     public bool IsPrimary { get; init; }
     public DateTime EffectiveFrom { get; init; }
     public DateTime? EffectiveTo { get; init; }
+    public string? ExternalSource { get; init; }
+    public string? ExternalId { get; init; }
 }
 
 public class AssignPositionCommandHandler : IRequestHandler<AssignPositionCommand, Guid>
@@ -47,6 +51,10 @@ public class AssignPositionCommandHandler : IRequestHandler<AssignPositionComman
         if (!positionCompanies.ContainsKey(request.PositionId))
             throw new NotFoundException(request.PositionId.ToString(), "Position");
 
+        var (externalSource, externalId) = ExternalIdentity.Normalize(request.ExternalSource, request.ExternalId);
+        if (externalSource is not null && personnel.Positions.Any(pp => pp.ExternalSource == externalSource && pp.ExternalId == externalId))
+            throw ExternalIdentityRules.Duplicate("position assignment");
+
         var assignment = personnel.AssignPosition(
             request.PositionId,
             request.IsPrimary,
@@ -54,6 +62,7 @@ public class AssignPositionCommandHandler : IRequestHandler<AssignPositionComman
             request.EffectiveTo,
             _timeProvider.GetUtcNow().UtcDateTime,
             positionCompanies);
+        assignment.SetExternalIdentity(externalSource, externalId);
 
         await _context.SaveChangesAsync(cancellationToken);
 

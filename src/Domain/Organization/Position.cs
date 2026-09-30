@@ -11,6 +11,8 @@ public sealed class Position : BaseAuditableEntity<Guid>
     public string Title { get; private set; } = null!;
     public string? Description { get; private set; }
     public PositionStatus Status { get; private set; }
+    public string? ExternalSource { get; private set; }
+    public string? ExternalId { get; private set; }
 
     public Position? ParentPosition { get; private set; }
     private readonly List<Position> _children = [];
@@ -47,6 +49,8 @@ public sealed class Position : BaseAuditableEntity<Guid>
 
         ParentPositionId = newParentPositionId;
     }
+
+    public void SetExternalIdentity(string? source, string? id) => (ExternalSource, ExternalId) = ExternalIdentity.Normalize(source, id);
 
     /// <summary>Deactivation requires the assignments to be loaded; ended assignments are history and do not block it.</summary>
     public void SetStatus(PositionStatus status, DateTime now)

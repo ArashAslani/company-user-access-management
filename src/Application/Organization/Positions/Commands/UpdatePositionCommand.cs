@@ -1,12 +1,13 @@
 using CompanyAccessManagement.Application.Common.Hierarchy;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
+using CompanyAccessManagement.Application.Common.Validation;
 using CompanyAccessManagement.Domain.Common;
 using CompanyAccessManagement.Domain.Organization;
 
 namespace CompanyAccessManagement.Application.Organization.Positions.Commands;
 
-public record UpdatePositionCommand : IRequest
+public record UpdatePositionCommand : IRequest, IExternalIdentityFields
 {
     public Guid Id { get; set; }
     public string Code { get; init; } = null!;
@@ -14,6 +15,8 @@ public record UpdatePositionCommand : IRequest
     public string? Description { get; init; }
     public Guid? ParentPositionId { get; init; }
     public PositionStatus Status { get; init; }
+    public string? ExternalSource { get; init; }
+    public string? ExternalId { get; init; }
 }
 
 public class UpdatePositionCommandHandler : IRequestHandler<UpdatePositionCommand>
@@ -63,7 +66,13 @@ public class UpdatePositionCommandHandler : IRequestHandler<UpdatePositionComman
         if (codeExists)
             throw new DomainRuleViolationException("POSITION_CODE_DUPLICATE", "Position code must be unique within the company.");
 
+        var (externalSource, externalId) = ExternalIdentity.Normalize(request.ExternalSource, request.ExternalId);
+        if (externalSource is not null
+            && await _context.Positions.AnyAsync(p => p.CompanyId == position.CompanyId && p.Id != position.Id && p.ExternalSource == externalSource && p.ExternalId == externalId, cancellationToken))
+            throw ExternalIdentityRules.Duplicate("position");
+
         position.UpdateDetails(request.Code, request.Title, request.Description);
+        position.SetExternalIdentity(externalSource, externalId);
 
         if (request.ParentPositionId != position.ParentPositionId)
             position.ChangeParent(request.ParentPositionId);
