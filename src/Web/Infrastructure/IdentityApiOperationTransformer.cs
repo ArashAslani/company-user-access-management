@@ -14,16 +14,16 @@ internal sealed class IdentityApiOperationTransformer : IOpenApiOperationTransfo
 {
     private static readonly Dictionary<string, (string Summary, string Description)> _metadata = new()
     {
-        ["api/Users/register"]                  = ("Register", "Creates a new user account."),
-        ["api/Users/login"]                     = ("Log in", "Authenticates a user. Use ?useCookies=true for cookie-based authentication."),
-        ["api/Users/refresh"]                   = ("Refresh token", "Returns a new access token using a valid refresh token."),
-        ["api/Users/confirmEmail"]              = ("Confirm email", "Confirms a user's email address using the token sent by email."),
-        ["api/Users/resendConfirmationEmail"]   = ("Resend confirmation email", "Sends a new email confirmation link to the specified address."),
-        ["api/Users/forgotPassword"]            = ("Forgot password", "Sends a password reset link to the specified email address."),
-        ["api/Users/resetPassword"]             = ("Reset password", "Resets a user's password using the token sent by email."),
-        ["api/Users/manage/2fa"]                = ("Manage two-factor authentication", "Enables, disables, or retrieves two-factor authentication settings."),
-        ["api/Users/manage/info GET"]           = ("Get account info", "Returns the current user's email and two-factor authentication status."),
-        ["api/Users/manage/info POST"]          = ("Update account info", "Updates the current user's email or password."),
+        ["register"]                = ("Register", "Creates a new user account."),
+        ["login"]                   = ("Log in", "Authenticates a user. Use ?useCookies=true for cookie-based authentication."),
+        ["refresh"]                 = ("Refresh token", "Returns a new access token using a valid refresh token."),
+        ["confirmEmail"]            = ("Confirm email", "Confirms a user's email address using the token sent by email."),
+        ["resendConfirmationEmail"] = ("Resend confirmation email", "Sends a new email confirmation link to the specified address."),
+        ["forgotPassword"]          = ("Forgot password", "Sends a password reset link to the specified email address."),
+        ["resetPassword"]           = ("Reset password", "Resets a user's password using the token sent by email."),
+        ["manage/2fa"]              = ("Manage two-factor authentication", "Enables, disables, or retrieves two-factor authentication settings."),
+        ["manage/info GET"]         = ("Get account info", "Returns the current user's email and two-factor authentication status."),
+        ["manage/info POST"]        = ("Update account info", "Updates the current user's email or password."),
     };
 
     public Task TransformAsync(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)

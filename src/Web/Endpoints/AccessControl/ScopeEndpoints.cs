@@ -15,18 +15,6 @@ public sealed class ScopeEndpoints : IEndpointGroup
         group.WithTags("Scope")
             .RequireAuthorization();
 
-        // Get workshops for scope selection
-        group.MapGet("/workshops", async (
-            ISender sender,
-            [FromQuery] Guid companyId) =>
-        {
-            var result = await sender.Send(new GetWorkshopsQuery { CompanyId = companyId });
-            return Results.Ok(result);
-        })
-        .RequirePermission("AccessManagement.RuleScope.Read")
-        .WithName("GetWorkshops")
-        .Produces<List<WorkshopDto>>(StatusCodes.Status200OK);
-
         // Get resource tree for permission picker
         group.MapGet("/resources/tree", async (
             ISender sender,

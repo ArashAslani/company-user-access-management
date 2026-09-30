@@ -35,7 +35,6 @@ public record PositionDetailDto : IMapFrom<Position>
     public string? ParentPositionTitle { get; init; }
     public List<PositionDto> Children { get; init; } = new();
     public List<PersonnelPositionDto> Personnel { get; init; } = new();
-    public List<AttachmentDto> Attachments { get; init; } = new();
     public PositionStatus Status { get; init; }
 
     public void Mapping(Profile profile)
@@ -94,11 +93,4 @@ public record PersonnelPositionDto
     public DateTime? EffectiveTo { get; init; }
     public PersonnelPositionStatus Status { get; init; }
     public string AccessGroupHint { get; init; } = null!;
-}
-
-public record AttachmentDto
-{
-    public Guid Id { get; init; }
-    public string FileName { get; init; } = null!;
-    public string Url { get; init; } = null!;
 }

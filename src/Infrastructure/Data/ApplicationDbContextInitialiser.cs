@@ -152,15 +152,8 @@ public class ApplicationDbContextInitialiser
         EnsurePermission(accessMgmt, "Role.Permissions.Manage", "Manage role permissions");
         EnsurePermission(accessMgmt, "Role.BulkAssign", "Bulk assign roles");
         EnsurePermission(accessMgmt, "Permission.Assign", "Assign permissions");
-        EnsurePermission(accessMgmt, "AuditLog.Read", "Read audit logs");
-        EnsurePermission(accessMgmt, "AuditLog.Export", "Export audit logs");
         EnsurePermission(accessMgmt, "RuleScope.Read", "Read rule scopes");
         EnsurePermission(accessMgmt, "Resource.Read", "Read resources");
-
-        var attachments = EnsureResource(qcApp, "Attachments", "Attachments", "Attachment management");
-        EnsurePermission(attachments, "Attachment.Create", "Create attachments");
-        EnsurePermission(attachments, "Attachment.Read", "Read attachments");
-        EnsurePermission(attachments, "Attachment.Delete", "Delete attachments");
 
         // Persist new resources/permissions so implication targets have stable ids.
         await _context.SaveChangesAsync();
@@ -174,15 +167,12 @@ public class ApplicationDbContextInitialiser
         EnsureImplication(organization, "Position.Delete", "Position.Read");
         EnsureImplication(organization, "PersonnelPosition.Edit", "PersonnelPosition.Create");
         EnsureImplication(organization, "PersonnelPosition.Delete", "PersonnelPosition.Create");
-        EnsureImplication(accessMgmt, "AuditLog.Export", "AuditLog.Read");
         EnsureImplication(accessMgmt, "Role.Permissions.Manage", "Role.Read");
         EnsureImplication(accessMgmt, "Role.BulkAssign", "Role.Read");
         EnsureImplication(accessMgmt, "Role.Create", "Role.Read");
         EnsureImplication(accessMgmt, "Role.Edit", "Role.Read");
         EnsureImplication(accessMgmt, "Role.Delete", "Role.Read");
         EnsureImplication(accessMgmt, "Permission.Assign", "Role.Read");
-        EnsureImplication(attachments, "Attachment.Delete", "Attachment.Create");
-        EnsureImplication(attachments, "Attachment.Read", "Attachment.Create");
         EnsureImplication(accessMgmt, "RuleScope.Read", "Resource.Read");
 
         await _context.SaveChangesAsync();

@@ -15,7 +15,6 @@ public record CreatePositionCommand : IRequest<Guid>
     public string Title { get; init; } = null!;
     public Guid? ParentPositionId { get; init; }
     public PositionStatus Status { get; init; } = PositionStatus.Active;
-    public Guid[] AttachmentIds { get; init; } = [];
 }
 
 public class CreatePositionCommandHandler : IRequestHandler<CreatePositionCommand, Guid>

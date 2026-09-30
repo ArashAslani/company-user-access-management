@@ -27,7 +27,6 @@ public record PersonnelDetailDto
     public Guid CompanyId { get; init; }
     public PersonnelStatus Status { get; init; }
     public List<PersonnelPositionDto> Positions { get; init; } = new();
-    public List<AttachmentDto> Attachments { get; init; } = new();
     public SignatureDto? Signature { get; init; }
 }
 
@@ -48,13 +47,5 @@ public record SignatureDto
 {
     public Guid Id { get; init; }
     public int Version { get; init; }
-    public string Url { get; init; } = null!;
     public bool IsCurrent { get; init; }
-}
-
-public record AttachmentDto
-{
-    public Guid Id { get; init; }
-    public string FileName { get; init; } = null!;
-    public string Url { get; init; } = null!;
 }

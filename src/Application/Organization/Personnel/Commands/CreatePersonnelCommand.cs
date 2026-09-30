@@ -16,7 +16,6 @@ public record CreatePersonnelCommand : IRequest<Guid>
     public string? PhoneNumber { get; init; }
     public Guid CompanyId { get; init; }
     public PersonnelStatus Status { get; init; } = PersonnelStatus.Draft;
-    public Guid[] AttachmentIds { get; init; } = [];
 }
 
 public class CreatePersonnelCommandHandler : IRequestHandler<CreatePersonnelCommand, Guid>

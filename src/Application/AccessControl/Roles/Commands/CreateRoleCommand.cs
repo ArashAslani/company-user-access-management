@@ -19,7 +19,6 @@ public record CreateRoleCommand : IRequest<Guid>
     public DateTime? ValidUntil { get; init; }
     public RoleKind Kind { get; init; } = RoleKind.Standard;
     public RoleStatus Status { get; init; } = RoleStatus.Active;
-    public Guid[] AttachmentIds { get; init; } = [];
 }
 
 public class CreateRoleCommandHandler : IRequestHandler<CreateRoleCommand, Guid>

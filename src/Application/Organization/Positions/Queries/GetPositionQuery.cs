@@ -75,7 +75,6 @@ public class GetPositionQueryHandler : IRequestHandler<GetPositionQuery, Positio
                     Status = a.Status,
                     AccessGroupHint = "Role-based access group hint" // Would come from UserCompany roles
                 }).ToList(),
-            Attachments = new List<AttachmentDto>(),
             Status = position.Status
         };
     }

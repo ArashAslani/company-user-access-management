@@ -64,12 +64,10 @@ public class GetPersonnelDetailQueryHandler : IRequestHandler<GetPersonnelDetail
                     Status = p.Status,
                     AccessGroupHint = "Role-based access group hint"
                 }).ToList(),
-            Attachments = new List<AttachmentDto>(),
             Signature = currentSig != null ? new SignatureDto
             {
                 Id = currentSig.Id,
                 Version = currentSig.Version,
-                Url = $"/api/v1/attachments/{currentSig.Id}",
                 IsCurrent = currentSig.IsCurrent
             } : null
         };

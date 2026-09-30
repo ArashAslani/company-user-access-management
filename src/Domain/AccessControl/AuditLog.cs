@@ -41,4 +41,4 @@ public sealed class AuditLog : BaseAuditableEntity<Guid>
     }
 }
 
-public enum AccessRuleSourceType { DirectUser, Role, RoleGroup, Delegated, System, Copy }
+public enum AccessRuleSourceType { DirectUser = 0, Role = 1, Delegated = 3, System = 4, Copy = 5 }

@@ -1,13 +1,5 @@
 namespace CompanyAccessManagement.Application.AccessControl.Scopes.Queries;
 
-public record WorkshopDto
-{
-    public Guid Id { get; init; }
-    public string Name { get; init; } = null!;
-    public string Code { get; init; } = null!;
-    public Guid? RelatedSiteId { get; init; }
-}
-
 public record ScopeResourceTreeDto
 {
     public Guid Id { get; init; }
