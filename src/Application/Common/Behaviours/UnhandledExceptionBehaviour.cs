@@ -20,12 +20,8 @@ public class UnhandledExceptionBehaviour<TRequest, TResponse> : IPipelineBehavio
         }
         catch (Exception ex)
         {
-            var requestName = typeof(TRequest).Name;
-
-            _logger.LogError(ex, "CleanArchitecture Request: Unhandled Exception for Request {Name} {@Request}", requestName, request);
-
+            _logger.LogError(ex, "Unhandled exception for request {Name}", typeof(TRequest).Name);
             throw;
         }
     }
 }
-

@@ -7,12 +7,16 @@ using CompanyAccessManagement.Web.Authorization;
 using CompanyAccessManagement.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using PersonnelEntity = CompanyAccessManagement.Domain.Organization.Personnel;
 
 namespace CompanyAccessManagement.Web.Endpoints.Organization;
 
 public sealed class PersonnelEndpoints : IEndpointGroup
 {
     public static string RoutePrefix => "/api/v1/organization/personnel";
+
+    // Multipart framing overhead on top of the largest accepted signature.
+    private const long SignatureRequestLimitBytes = PersonnelEntity.MaxSignatureBytes + 64 * 1024;
 
     public static void Map(RouteGroupBuilder group)
     {
@@ -113,7 +117,15 @@ public sealed class PersonnelEndpoints : IEndpointGroup
             IFormFile file,
             ISender sender) =>
         {
-            using var ms = new MemoryStream();
+            if (file.Length > PersonnelEntity.MaxSignatureBytes)
+            {
+                return Results.Problem(
+                    title: "Signature file exceeds 8MB limit.",
+                    statusCode: StatusCodes.Status400BadRequest,
+                    extensions: new Dictionary<string, object?> { ["code"] = "SIGNATURE_TOO_LARGE" });
+            }
+
+            using var ms = new MemoryStream((int)file.Length);
             await file.CopyToAsync(ms);
             var content = ms.ToArray();
 
@@ -131,6 +143,8 @@ public sealed class PersonnelEndpoints : IEndpointGroup
         .WithName("UploadSignature")
         .Produces<Guid>(StatusCodes.Status201Created)
         .ProducesProblem(StatusCodes.Status400BadRequest)
+        .WithMetadata(new RequestSizeLimitAttribute(SignatureRequestLimitBytes))
+        .WithMetadata(new RequestFormLimitsAttribute { MultipartBodyLengthLimit = SignatureRequestLimitBytes })
         .DisableAntiforgery();
 
         // 2.8 Get personnel details
