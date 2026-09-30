@@ -77,7 +77,7 @@ public class AccountStatusApiTests : ApiTestBase
     {
         var personnelId = await WithDbAsync(async db =>
         {
-            var personnel = new Personnel("7000000001", "Linked", "Person", Gender.Male);
+            var personnel = new Personnel(_companyId, "7000000001", "Linked", "Person", Gender.Male);
             db.Personnel.Add(personnel);
             await db.SaveChangesAsync(default);
             return personnel.Id;

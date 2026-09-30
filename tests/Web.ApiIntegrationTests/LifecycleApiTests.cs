@@ -146,7 +146,7 @@ public class LifecycleApiTests : ApiTestBase
     private Task<Guid> SeedPersonnelAsync(string nationalCode)
         => WithDbAsync(async db =>
         {
-            var personnel = new Personnel(nationalCode, "Test", "Person", Gender.Female);
+            var personnel = new Personnel(_companyId, nationalCode, "Test", "Person", Gender.Female);
             db.Personnel.Add(personnel);
             await db.SaveChangesAsync(default);
             return personnel.Id;

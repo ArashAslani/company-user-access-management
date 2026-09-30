@@ -30,7 +30,7 @@ public class DeletePersonnelCommandHandler : IRequestHandler<DeletePersonnelComm
         var companyId = _workspace.RequireCompanyId();
 
         var personnel = await _context.Personnel
-            .VisibleIn(_context, companyId)
+            .VisibleIn(companyId)
             .Include(p => p.Positions)
             .FirstOrDefaultAsync(p => p.Id == request.Id, cancellationToken);
 

@@ -21,7 +21,7 @@ public class OrganizationDomainTests : TestBase
         (_companyId, _, _, _, _) = await SeedTestDataAsync();
 
         // Create test personnel
-        _personnel = new Personnel("1234567890", "John", "Doe", Gender.Male, "P001", "555-1234");
+        _personnel = new Personnel(_companyId, "1234567890", "John", "Doe", Gender.Male, "P001", "555-1234");
         Context.Personnel.Add(_personnel);
         await Context.SaveChangesAsync(default);
         _personnelId = _personnel.Id;
@@ -315,16 +315,13 @@ public class OrganizationDomainTests : TestBase
     }
 
     [Test]
-    public async Task Primary_DifferentCompanies_Overlap_Allowed()
+    public async Task AssignPosition_PositionOfOtherCompany_Denied()
     {
         var otherCompany = await CreateCompanyAsync("OTHERCO", "Other Company");
         var otherPosition = await CreatePositionAsync(otherCompany, "OTHERPOS");
 
-        _personnel.AssignPosition(_positionId, true, Now.AddDays(-5), Now.AddDays(5), Now, PositionCompanies());
-        _personnel.AssignPosition(otherPosition, true, Now.AddDays(-3), Now.AddDays(7), Now, PositionCompanies());
-        await Context.SaveChangesAsync(default);
-
-        _personnel.Positions.Count(p => p.IsPrimary && p.IsCurrentlyEffective(Now)).ShouldBe(2);
+        ShouldViolate(() => _personnel.AssignPosition(otherPosition, false, Now.AddDays(-3), null, Now, PositionCompanies()), "PERSONNEL_COMPANY_MISMATCH");
+        _personnel.Positions.ShouldBeEmpty();
     }
 
     [Test]
@@ -362,7 +359,7 @@ public class OrganizationDomainTests : TestBase
     [Test]
     public async Task Personnel_ConfirmEmployment_RequiresEffectivePosition()
     {
-        var personnel = new Personnel("9876543210", "Jane", "Smith", Gender.Female);
+        var personnel = new Personnel(_companyId, "9876543210", "Jane", "Smith", Gender.Female);
         Context.Personnel.Add(personnel);
         await Context.SaveChangesAsync(default);
 
@@ -380,7 +377,7 @@ public class OrganizationDomainTests : TestBase
     [Test]
     public async Task Personnel_RevertToDraft_RequiresNoEffectivePositions()
     {
-        var personnel = new Personnel("9876543210", "Jane", "Smith", Gender.Female);
+        var personnel = new Personnel(_companyId, "9876543210", "Jane", "Smith", Gender.Female);
         Context.Personnel.Add(personnel);
         await Context.SaveChangesAsync(default);
 
@@ -396,7 +393,7 @@ public class OrganizationDomainTests : TestBase
     [Test]
     public async Task Personnel_StatusTransition_DraftToEmployedAndBack()
     {
-        var personnel = new Personnel("9876543210", "Jane", "Smith", Gender.Female);
+        var personnel = new Personnel(_companyId, "9876543210", "Jane", "Smith", Gender.Female);
         Context.Personnel.Add(personnel);
         await Context.SaveChangesAsync(default);
 
@@ -446,7 +443,7 @@ public class OrganizationDomainTests : TestBase
     [TestCase(PersonnelStatus.Inactive)]
     public void Personnel_ChangeStatus_ToEmployed_Denied(PersonnelStatus from)
     {
-        var personnel = new Personnel("1112223334", "Jane", "Smith", Gender.Female);
+        var personnel = new Personnel(_companyId, "1112223334", "Jane", "Smith", Gender.Female);
         personnel.ChangeStatus(from, Now);
 
         ShouldViolate(() => personnel.ChangeStatus(PersonnelStatus.Employed, Now), "PERSONNEL_STATUS_TRANSITION_INVALID");

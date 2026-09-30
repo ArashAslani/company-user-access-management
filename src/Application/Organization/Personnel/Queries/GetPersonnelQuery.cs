@@ -39,7 +39,7 @@ public class GetPersonnelQueryHandler : IRequestHandler<GetPersonnelQuery, Pagin
             .AsQueryable();
 
         var companyId = _workspace.EnsureCompany(request.CompanyId);
-        query = query.VisibleIn(_context, companyId);
+        query = query.VisibleIn(companyId);
 
         if (!string.IsNullOrWhiteSpace(request.Status) && Enum.TryParse<PersonnelStatus>(request.Status, true, out var status))
             query = query.Where(p => p.Status == status);
@@ -76,11 +76,15 @@ public class GetPersonnelQueryHandler : IRequestHandler<GetPersonnelQuery, Pagin
             .Take(request.PageSize)
             .ToListAsync(cancellationToken);
 
+        var companyName = await _context.Companies
+            .Where(c => c.Id == companyId)
+            .Select(c => c.Name)
+            .FirstAsync(cancellationToken);
+
         var now = _timeProvider.GetUtcNow().UtcDateTime;
         var items = personnelList.Select(p =>
         {
-            var workspacePositions = p.Positions.Where(pp => pp.Position?.CompanyId == companyId).ToList();
-            var primaryPos = workspacePositions.FirstOrDefault(pp => pp.IsPrimary && pp.IsCurrentlyEffective(now));
+            var primaryPos = p.Positions.FirstOrDefault(pp => pp.IsPrimary && pp.IsCurrentlyEffective(now));
 
             return new PersonnelDto
             {
@@ -88,8 +92,8 @@ public class GetPersonnelQueryHandler : IRequestHandler<GetPersonnelQuery, Pagin
                 PrimaryPersonnelCode = p.PersonnelCode ?? string.Empty,
                 FullName = p.FirstName + " " + p.LastName,
                 NationalCode = p.NationalCode,
-                CompanyId = companyId,
-                CompanyName = companyId.ToString(),
+                CompanyId = p.CompanyId,
+                CompanyName = companyName,
                 PrimaryPositionTitle = primaryPos?.Position?.Title ?? string.Empty,
                 Status = p.Status,
                 SignatureStatus = p.GetCurrentSignature() != null ? "Registered" : "NotRegistered"

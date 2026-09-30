@@ -33,16 +33,16 @@ public class CreatePersonnelCommandHandler : IRequestHandler<CreatePersonnelComm
 
     public async Task<Guid> Handle(CreatePersonnelCommand request, CancellationToken cancellationToken)
     {
-        _workspace.EnsureCompany(request.CompanyId);
+        var companyId = _workspace.EnsureCompany(request.CompanyId);
 
-        // Check duplicate national code
         var exists = await _context.Personnel
-            .AnyAsync(p => p.NationalCode == request.NationalCode, cancellationToken);
+            .AnyAsync(p => p.CompanyId == companyId && p.NationalCode == request.NationalCode, cancellationToken);
 
         if (exists)
-            throw new DomainRuleViolationException("DUPLICATE_NATIONAL_CODE", "National code is already registered.");
+            throw new DomainRuleViolationException("DUPLICATE_NATIONAL_CODE", "National code is already registered in this company.");
 
         var personnel = new CompanyAccessManagement.Domain.Organization.Personnel(
+            companyId,
             request.NationalCode, 
             request.FirstName, 
             request.LastName, 

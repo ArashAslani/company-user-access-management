@@ -40,7 +40,12 @@ public class PersonnelConfiguration : IEntityTypeConfiguration<Personnel>
             .IsRequired()
             .HasConversion<int>();
 
-        builder.HasIndex(p => p.NationalCode).IsUnique();
+        builder.HasOne<Company>()
+            .WithMany()
+            .HasForeignKey(p => p.CompanyId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(p => new { p.CompanyId, p.NationalCode }).IsUnique();
         builder.HasIndex(p => p.Status);
         builder.HasIndex(p => new { p.LastName, p.FirstName });
 

@@ -6,6 +6,8 @@ namespace CompanyAccessManagement.Domain.Organization;
 public sealed class Personnel : BaseAuditableEntity<Guid>
 {
     public override Guid Id { get; protected set; }
+    /// <summary>The owning tenant. Immutable: a person never moves between companies.</summary>
+    public Guid CompanyId { get; private set; }
     public string NationalCode { get; private set; } = null!;
     public string? PersonnelCode { get; private set; }
     public string FirstName { get; private set; } = null!;
@@ -22,9 +24,13 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
 
     private Personnel() { }
 
-    public Personnel(string nationalCode, string firstName, string lastName, Gender gender, string? personnelCode = null, string? phoneNumber = null)
+    public Personnel(Guid companyId, string nationalCode, string firstName, string lastName, Gender gender, string? personnelCode = null, string? phoneNumber = null)
     {
+        if (companyId == Guid.Empty)
+            throw new DomainRuleViolationException("PERSONNEL_COMPANY_REQUIRED", "Personnel must belong to a company.");
+
         Id = Guid.NewGuid();
+        CompanyId = companyId;
         NationalCode = nationalCode;
         FirstName = firstName;
         LastName = lastName;
@@ -90,6 +96,9 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
     {
         if (Status == PersonnelStatus.Inactive)
             throw new DomainRuleViolationException("PERSONNEL_INACTIVE", "Inactive personnel cannot be assigned to a position.");
+
+        if (CompanyOf(positionId, positionCompanies) != CompanyId)
+            throw new DomainRuleViolationException("PERSONNEL_COMPANY_MISMATCH", "Personnel can only be assigned to positions of their own company.");
 
         EnsureNoOverlapOnSamePosition(positionId, effectiveFrom, effectiveTo, excludeAssignmentId: null);
         if (isPrimary)

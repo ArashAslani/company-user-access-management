@@ -15,6 +15,7 @@ public class MigrationUpgradeTests
 {
     private const string LegacyCompositeKeyMigration = "20260925114254_AddBranchRootIdToAccessRules";
     private const string BeforeRemoveRolePrincipalIdMigration = "20260929213137_RemoveAccessRuleBranchRootId";
+    private const string BeforePersonnelCompanyOwnershipMigration = "20260930180706_AccountPersonnelUniqueness";
 
     private string _databasePath = null!;
     private string _connectionString = null!;
@@ -48,6 +49,7 @@ public class MigrationUpgradeTests
         var personnelId = Guid.NewGuid().ToString().ToUpperInvariant();
         var positionA = Guid.NewGuid().ToString().ToUpperInvariant();
         var positionB = Guid.NewGuid().ToString().ToUpperInvariant();
+        var companyId = Guid.NewGuid().ToString().ToUpperInvariant();
 
         await using (var legacy = CreateContext())
         {
@@ -58,9 +60,11 @@ public class MigrationUpgradeTests
                 $"""
                 INSERT INTO "Personnel" ("Id", "NationalCode", "FirstName", "LastName", "Gender", "Status", "Created", "LastModified")
                 VALUES ('{personnelId}', '1234567890', 'Legacy', 'Row', 0, 1, '{stamp}', '{stamp}');
+                INSERT INTO "Companies" ("Id", "Code", "Name", "Status", "Created", "LastModified")
+                VALUES ('{companyId}', 'LEGACY', 'Legacy', 0, '{stamp}', '{stamp}');
                 INSERT INTO "Positions" ("Id", "CompanyId", "Code", "Title", "Status", "Created", "LastModified")
-                VALUES ('{positionA}', '{Guid.NewGuid()}', 'A', 'Position A', 0, '{stamp}', '{stamp}'),
-                       ('{positionB}', '{Guid.NewGuid()}', 'B', 'Position B', 0, '{stamp}', '{stamp}');
+                VALUES ('{positionA}', '{companyId}', 'A', 'Position A', 0, '{stamp}', '{stamp}'),
+                       ('{positionB}', '{companyId}', 'B', 'Position B', 0, '{stamp}', '{stamp}');
                 INSERT INTO "PersonnelPositions" ("PersonnelId", "PositionId", "IsPrimary", "Status", "EffectiveFrom", "CreatedAt", "Id")
                 VALUES ('{personnelId}', '{positionA}', 1, 0, '{stamp}', '{stamp}', '00000000-0000-0000-0000-000000000000'),
                        ('{personnelId}', '{positionB}', 0, 0, '{stamp}', '{stamp}', '00000000-0000-0000-0000-000000000000');
@@ -125,6 +129,119 @@ public class MigrationUpgradeTests
             principals.ShouldAllBe(ap => ap.Id != Guid.Empty && ap.CompanyId == Guid.Parse(companyId) && ap.ApplicationId == Guid.Parse(appId));
         }
     }
+
+    [Test]
+    public async Task PersonnelCompanyOwnership_SingleAssignedCompany_IsUsed()
+    {
+        var company = NewId();
+        var otherRoot = NewId();
+        var position = NewId();
+        var personnel = NewId();
+
+        await SeedBeforeOwnershipAsync(
+            CompanySql(company, "ASSIGNED") + CompanySql(otherRoot, "OTHER") +
+            PositionSql(position, company, "POS") +
+            PersonnelSql(personnel, "1000000001") +
+            AssignmentSql(personnel, position));
+
+        await using var upgraded = CreateContext();
+        await upgraded.Database.MigrateAsync();
+
+        (await upgraded.Personnel.AsNoTracking().SingleAsync()).CompanyId.ShouldBe(Guid.Parse(company));
+    }
+
+    [Test]
+    public async Task PersonnelCompanyOwnership_UnassignedWithSingleRoot_UsesRootCompany()
+    {
+        var root = NewId();
+        var child = NewId();
+        var personnel = NewId();
+
+        await SeedBeforeOwnershipAsync(
+            CompanySql(root, "ROOT") + CompanySql(child, "CHILD", parent: root) +
+            PersonnelSql(personnel, "1000000002"));
+
+        await using var upgraded = CreateContext();
+        await upgraded.Database.MigrateAsync();
+
+        (await upgraded.Personnel.AsNoTracking().SingleAsync()).CompanyId.ShouldBe(Guid.Parse(root));
+    }
+
+    [Test]
+    public async Task PersonnelCompanyOwnership_AssignmentsInSeveralCompanies_FailsClearly()
+    {
+        var companyA = NewId();
+        var companyB = NewId();
+        var positionA = NewId();
+        var positionB = NewId();
+        var personnel = NewId();
+
+        await SeedBeforeOwnershipAsync(
+            CompanySql(companyA, "A") + CompanySql(companyB, "B") +
+            PositionSql(positionA, companyA, "PA") + PositionSql(positionB, companyB, "PB") +
+            PersonnelSql(personnel, "1000000003") +
+            AssignmentSql(personnel, positionA) + AssignmentSql(personnel, positionB));
+
+        await ShouldFailUnresolvedAsync();
+    }
+
+    [Test]
+    public async Task PersonnelCompanyOwnership_UnassignedWithSeveralRoots_FailsClearly()
+    {
+        await SeedBeforeOwnershipAsync(
+            CompanySql(NewId(), "ROOT1") + CompanySql(NewId(), "ROOT2") +
+            PersonnelSql(NewId(), "1000000004"));
+
+        await ShouldFailUnresolvedAsync();
+    }
+
+    private async Task ShouldFailUnresolvedAsync()
+    {
+        await using (var upgraded = CreateContext())
+        {
+            var ex = await Should.ThrowAsync<SqliteException>(() => upgraded.Database.MigrateAsync());
+            ex.Message.ShouldContain("personnel_company_unresolved_assign_manually");
+        }
+
+        await using var check = CreateContext();
+        (await check.Database.GetAppliedMigrationsAsync()).ShouldNotContain(m => m.EndsWith("_PersonnelCompanyOwnership"));
+        (await check.Database.SqlQueryRaw<int>("""SELECT COUNT(*) AS "Value" FROM "Personnel" """).SingleAsync()).ShouldBe(1);
+    }
+
+    private async Task SeedBeforeOwnershipAsync(string sql)
+    {
+        await using var legacy = CreateContext();
+        await legacy.GetService<IMigrator>().MigrateAsync(BeforePersonnelCompanyOwnershipMigration);
+        await legacy.Database.ExecuteSqlRawAsync(sql);
+    }
+
+    private const string Stamp = "2026-01-01 00:00:00";
+
+    private static string NewId() => Guid.NewGuid().ToString().ToUpperInvariant();
+
+    private static string CompanySql(string id, string code, string? parent = null) =>
+        $"""
+        INSERT INTO "Companies" ("Id", "ParentCompanyId", "Code", "Name", "Status", "Created", "LastModified")
+        VALUES ('{id}', {(parent is null ? "NULL" : $"'{parent}'")}, '{code}', '{code}', 0, '{Stamp}', '{Stamp}');
+        """;
+
+    private static string PositionSql(string id, string companyId, string code) =>
+        $"""
+        INSERT INTO "Positions" ("Id", "CompanyId", "Code", "Title", "Status", "Created", "LastModified")
+        VALUES ('{id}', '{companyId}', '{code}', '{code}', 0, '{Stamp}', '{Stamp}');
+        """;
+
+    private static string PersonnelSql(string id, string nationalCode) =>
+        $"""
+        INSERT INTO "Personnel" ("Id", "NationalCode", "FirstName", "LastName", "Gender", "Status", "Created", "LastModified")
+        VALUES ('{id}', '{nationalCode}', 'Legacy', 'Row', 0, 0, '{Stamp}', '{Stamp}');
+        """;
+
+    private static string AssignmentSql(string personnelId, string positionId) =>
+        $"""
+        INSERT INTO "PersonnelPositions" ("Id", "PersonnelId", "PositionId", "IsPrimary", "Status", "EffectiveFrom", "CreatedAt")
+        VALUES ('{NewId()}', '{personnelId}', '{positionId}', 0, 0, '{Stamp}', '{Stamp}');
+        """;
 
     private ApplicationDbContext CreateContext()
     {

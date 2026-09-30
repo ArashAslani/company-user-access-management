@@ -34,6 +34,7 @@ public class UpdatePositionAssignmentCommandHandler : IRequestHandler<UpdatePosi
         var companyId = _workspace.RequireCompanyId();
 
         var personnel = await _context.Personnel
+            .VisibleIn(companyId)
             .Include(p => p.Positions)
             .FirstOrDefaultAsync(p => p.Id == request.PersonnelId, cancellationToken);
 

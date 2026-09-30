@@ -302,7 +302,103 @@ public class TenantIsolationApiTests : ApiTestBase
     }
 
     [Test]
-    public async Task AssignPosition_OtherCompanyPosition_NotFound()
+    public async Task UnassignedPersonnel_CompanyA_NotVisibleToCompanyB()
+    {
+        var personnelId = await CreateForeignUnassignedPersonnelAsync("5550004444");
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Read");
+
+        var list = await session.Client.GetAsync("/api/v1/organization/personnel/?pageSize=100");
+
+        list.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await list.Content.ReadAsStringAsync()).ShouldNotContain(personnelId.ToString());
+    }
+
+    [Test]
+    public async Task PersonnelDetail_CrossCompany_Returns404()
+    {
+        var personnelId = await CreateForeignUnassignedPersonnelAsync("5550004444");
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Read");
+
+        (await session.Client.GetAsync($"/api/v1/organization/personnel/{personnelId}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Test]
+    public async Task UpdatePersonnel_CrossCompany_Returns404()
+    {
+        var personnelId = await CreateForeignUnassignedPersonnelAsync("5550004444");
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Read", "Organization.Personnel.Edit");
+
+        var response = await session.Client.PutAsJsonAsync($"/api/v1/organization/personnel/{personnelId}",
+            new { FirstName = "Hacked", LastName = "Person", NationalCode = "5550004444", Gender = 1 });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await WithDbAsync(db => db.Personnel.Where(p => p.Id == personnelId).Select(p => p.FirstName).SingleAsync())).ShouldBe("Test");
+    }
+
+    [Test]
+    public async Task DeletePersonnel_CrossCompany_Returns404()
+    {
+        var personnelId = await CreateForeignUnassignedPersonnelAsync("5550004444");
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Read", "Organization.Personnel.Delete");
+
+        (await session.Client.DeleteAsync($"/api/v1/organization/personnel/{personnelId}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await WithDbAsync(db => db.Personnel.Where(p => p.Id == personnelId).Select(p => p.Status).SingleAsync())).ShouldBe(PersonnelStatus.Draft);
+    }
+
+    [Test]
+    public async Task UploadSignature_CrossCompany_Returns404()
+    {
+        var personnelId = await CreateForeignUnassignedPersonnelAsync("5550004444");
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.PersonnelSignature.Create");
+
+        var response = await session.Client.PostAsync($"/api/v1/organization/personnel/{personnelId}/signature",
+            TestImages.SignatureUpload(TestImages.Png1x1));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await WithDbAsync(db => db.PersonnelSignatures.AnyAsync(s => s.PersonnelId == personnelId))).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task AssignPosition_CrossCompanyPersonnel_Returns404()
+    {
+        var personnelId = await CreateForeignUnassignedPersonnelAsync("5550004444");
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Position.Create", "Organization.PersonnelPosition.Create");
+        var localPosition = await CreatePositionAsync(session, _companyId, "LOCALPOS");
+
+        var response = await session.Client.PostAsJsonAsync($"/api/v1/organization/personnel/{personnelId}/positions",
+            new { PositionId = localPosition, IsPrimary = false, EffectiveFrom = DateTime.UtcNow.AddDays(-1) });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await WithDbAsync(db => db.PersonnelPositions.AnyAsync(pp => pp.PersonnelId == personnelId))).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task SameNationalCode_InDifferentCompanies_IsAllowed()
+    {
+        var foreignId = await CreateForeignUnassignedPersonnelAsync("5550004444");
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create");
+
+        var localId = await CreatePersonnelAsync(session, "5550004444");
+
+        localId.ShouldNotBe(foreignId);
+        (await WithDbAsync(db => db.Personnel.Where(p => p.NationalCode == "5550004444").Select(p => p.CompanyId).ToListAsync()))
+            .OrderBy(c => c).ShouldBe(new[] { _companyId, _otherCompanyId }.OrderBy(c => c));
+    }
+
+    [Test]
+    public async Task CreatePersonnel_OtherCompanyId_Forbidden()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create");
+
+        var response = await session.Client.PostAsJsonAsync("/api/v1/organization/personnel",
+            new { CompanyId = _otherCompanyId, NationalCode = "5550005555", FirstName = "Test", LastName = "Person", Gender = 1 });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await WithDbAsync(db => db.Personnel.AnyAsync(p => p.NationalCode == "5550005555"))).ShouldBeFalse();
+    }
+
+    [Test]
+    public async Task AssignPosition_PositionFromOtherCompany_Returns404()
     {
         var foreignPosition = await SeedPositionAsync(_otherCompanyId, "FOREIGNPOS");
         var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.PersonnelPosition.Create");
@@ -355,6 +451,12 @@ public class TenantIsolationApiTests : ApiTestBase
             new { NationalCode = nationalCode, FirstName = "Test", LastName = "Person", Gender = 1 });
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
         return (await response.Content.ReadFromJsonAsync<IdResponse>())!.Id;
+    }
+
+    private async Task<Guid> CreateForeignUnassignedPersonnelAsync(string nationalCode)
+    {
+        var foreignSession = await CreateAuthorizedClientAsync("foreign@test.com", _otherCompanyId, "Organization.Personnel.Create");
+        return await CreatePersonnelAsync(foreignSession, nationalCode);
     }
 
     private static async Task<Guid> AssignAsync(AuthSession session, Guid personnelId, Guid positionId)

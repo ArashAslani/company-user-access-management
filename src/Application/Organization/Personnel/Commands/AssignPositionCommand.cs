@@ -37,6 +37,7 @@ public class AssignPositionCommandHandler : IRequestHandler<AssignPositionComman
         await PositionCompanyLookup.EnsurePositionActiveAsync(_context, request.PositionId, cancellationToken);
 
         var personnel = await _context.Personnel
+            .VisibleIn(companyId)
             .Include(p => p.Positions)
             .FirstOrDefaultAsync(p => p.Id == request.PersonnelId, cancellationToken);
 

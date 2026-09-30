@@ -32,7 +32,7 @@ public class UploadSignatureCommandHandler : IRequestHandler<UploadSignatureComm
         var companyId = _workspace.RequireCompanyId();
 
         var personnel = await _context.Personnel
-            .VisibleIn(_context, companyId)
+            .VisibleIn(companyId)
             .Include(p => p.Signatures)
             .FirstOrDefaultAsync(p => p.Id == request.PersonnelId, cancellationToken);
 

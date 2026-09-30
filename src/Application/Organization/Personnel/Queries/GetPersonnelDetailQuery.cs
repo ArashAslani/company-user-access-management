@@ -28,7 +28,7 @@ public class GetPersonnelDetailQueryHandler : IRequestHandler<GetPersonnelDetail
         var companyId = _workspace.RequireCompanyId();
 
         var personnel = await _context.Personnel
-            .VisibleIn(_context, companyId)
+            .VisibleIn(companyId)
             .Include(p => p.Positions)
                 .ThenInclude(pp => pp.Position)
             .Include(p => p.Signatures)
@@ -47,10 +47,10 @@ public class GetPersonnelDetailQueryHandler : IRequestHandler<GetPersonnelDetail
             NationalCode = personnel.NationalCode,
             Gender = personnel.Gender,
             PhoneNumber = personnel.PhoneNumber,
-            CompanyId = companyId,
+            CompanyId = personnel.CompanyId,
             Status = personnel.Status,
             Positions = personnel.Positions
-                .Where(p => p.IsActive && p.Position?.CompanyId == companyId)
+                .Where(p => p.IsActive)
                 .OrderBy(p => p.EffectiveFrom)
                 .Select(p => new PersonnelPositionDto
                 {

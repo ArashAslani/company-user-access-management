@@ -37,18 +37,17 @@ public class UpdatePersonnelCommandHandler : IRequestHandler<UpdatePersonnelComm
         var companyId = _workspace.RequireCompanyId();
 
         var personnel = await _context.Personnel
-            .VisibleIn(_context, companyId)
+            .VisibleIn(companyId)
             .Include(p => p.Positions)
             .FirstOrDefaultAsync(p => p.Id == request.Id, cancellationToken);
 
         Guard.Against.NotFound(request.Id, personnel);
 
-        // Check duplicate national code (excluding self)
         var exists = await _context.Personnel
-            .AnyAsync(p => p.NationalCode == request.NationalCode && p.Id != request.Id, cancellationToken);
+            .AnyAsync(p => p.CompanyId == companyId && p.NationalCode == request.NationalCode && p.Id != request.Id, cancellationToken);
 
         if (exists)
-            throw new DomainRuleViolationException("DUPLICATE_NATIONAL_CODE", "National code is already registered.");
+            throw new DomainRuleViolationException("DUPLICATE_NATIONAL_CODE", "National code is already registered in this company.");
 
         personnel.UpdateDetails(request.FirstName, request.LastName, request.PhoneNumber, request.Gender);
         personnel.ChangeNationalCode(request.NationalCode);

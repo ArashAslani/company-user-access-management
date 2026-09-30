@@ -582,7 +582,7 @@ public class PersonnelApiTests : ApiTestBase
     }
 
     [Test]
-    public async Task Primary_DifferentCompanies_Overlap_Allowed()
+    public async Task Primary_OtherCompany_CannotAssignPersonnelOfThisCompany()
     {
         var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.Position.Create", "Organization.PersonnelPosition.Create");
         var personnelId = await CreatePersonnelAsync(session.Client, "1313131313");
@@ -602,10 +602,13 @@ public class PersonnelApiTests : ApiTestBase
         var otherSession = await CreateAuthorizedClientAsync("other@test.com", otherCompanyId, "Organization.PersonnelPosition.Create");
 
         await AssignAsync(session.Client, personnelId, positionA, DateTime.UtcNow.AddDays(-5), DateTime.UtcNow.AddDays(5), isPrimary: true);
-        await AssignAsync(otherSession.Client, personnelId, otherCompanyPosition, DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(10), isPrimary: true);
+        var response = await otherSession.Client.PostAsJsonAsync(
+            $"/api/v1/organization/personnel/{personnelId}/positions",
+            new { PositionId = otherCompanyPosition, IsPrimary = true, EffectiveFrom = DateTime.UtcNow.AddDays(-1), EffectiveTo = DateTime.UtcNow.AddDays(10) });
 
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         await WithDbAsync(async db =>
-            (await db.PersonnelPositions.AsNoTracking().CountAsync(pp => pp.PersonnelId == personnelId && pp.IsPrimary)).ShouldBe(2));
+            (await db.PersonnelPositions.AsNoTracking().CountAsync(pp => pp.PersonnelId == personnelId && pp.IsPrimary)).ShouldBe(1));
     }
 
     [Test]
