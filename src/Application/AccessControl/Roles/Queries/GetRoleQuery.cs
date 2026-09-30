@@ -31,6 +31,7 @@ public class GetRoleQueryHandler : IRequestHandler<GetRoleQuery, RoleDetailDto?>
                 .ThenInclude(c => c.UserRoles)
             .Include(r => r.UserRoles)
                 .ThenInclude(ur => ur.UserCompany)
+            .InAccessControlApplication(_context)
             .FirstOrDefaultAsync(r => r.Id == request.Id && r.CompanyId == companyId, cancellationToken);
 
         if (role is null)

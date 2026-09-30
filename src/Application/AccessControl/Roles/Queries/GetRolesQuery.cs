@@ -11,7 +11,6 @@ namespace CompanyAccessManagement.Application.AccessControl.Roles.Queries;
 public record GetRolesQuery : IRequest<PaginatedList<RoleDto>>
 {
     public Guid? CompanyId { get; init; }
-    public Guid? ApplicationId { get; init; }
     public string? Status { get; init; }
     public string? Search { get; init; }
     public int Page { get; init; } = 1;
@@ -34,13 +33,10 @@ public class GetRolesQueryHandler : IRequestHandler<GetRolesQuery, PaginatedList
     {
         var query = _context.Roles
             .Include(r => r.UserRoles)
-            .AsQueryable();
+            .InAccessControlApplication(_context);
 
         var companyId = _workspace.EnsureCompany(request.CompanyId);
         query = query.Where(r => r.CompanyId == companyId);
-
-        if (request.ApplicationId.HasValue)
-            query = query.Where(r => r.ApplicationId == request.ApplicationId.Value);
 
         if (!string.IsNullOrWhiteSpace(request.Status) && Enum.TryParse<RoleStatus>(request.Status, true, out var status))
             query = query.Where(r => r.Status == status);

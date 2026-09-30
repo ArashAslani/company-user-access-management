@@ -28,6 +28,7 @@ public class DeleteRoleCommandHandler : IRequestHandler<DeleteRoleCommand>
 
         var role = await _context.Roles
             .Include(r => r.UserRoles)
+            .InAccessControlApplication(_context)
             .FirstOrDefaultAsync(r => r.Id == request.Id && r.CompanyId == companyId, cancellationToken);
 
         Guard.Against.NotFound(request.Id, role);

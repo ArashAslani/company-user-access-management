@@ -40,9 +40,7 @@ public class CreateRoleCommandHandler : IRequestHandler<CreateRoleCommand, Guid>
         if (request.Kind != RoleKind.Standard)
             throw new ForbiddenAccessException();
 
-        var applicationExists = await _context.Applications
-            .AnyAsync(a => a.Id == request.ApplicationId, cancellationToken);
-        if (!applicationExists)
+        if (!await _context.IsAccessControlApplicationAsync(request.ApplicationId, cancellationToken))
             throw new NotFoundException(request.ApplicationId.ToString(), "Application");
 
         if (request.ParentRoleId.HasValue)

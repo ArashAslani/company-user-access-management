@@ -35,6 +35,7 @@ public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand>
         var companyId = _workspace.RequireCompanyId();
 
         var role = await _context.Roles
+            .InAccessControlApplication(_context)
             .FirstOrDefaultAsync(r => r.Id == request.Id && r.CompanyId == companyId, cancellationToken);
 
         Guard.Against.NotFound(request.Id, role);

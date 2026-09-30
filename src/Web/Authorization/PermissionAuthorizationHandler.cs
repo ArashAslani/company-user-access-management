@@ -38,7 +38,7 @@ public class PermissionAuthorizationHandler : AuthorizationHandler<PermissionReq
         }
 
         var decision = await _accessEvaluator.EvaluateAsync(
-            new AccessRequest(userId.Value, companyId.Value, "QC", requirement.Permission));
+            new AccessRequest(userId.Value, companyId.Value, AccessControlApplication.Code, requirement.Permission));
 
         if (decision.Allowed)
             context.Succeed(requirement);

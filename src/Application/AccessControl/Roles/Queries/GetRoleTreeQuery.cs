@@ -39,6 +39,7 @@ public class GetRoleTreeQueryHandler : IRequestHandler<GetRoleTreeQuery, RoleTre
 
         var roles = await _context.Roles
             .AsNoTracking()
+            .InAccessControlApplication(_context)
             .Where(r => r.CompanyId == companyId)
             .Select(r => new { r.Id, r.Code, r.Name, r.ParentRoleId })
             .ToListAsync(cancellationToken);

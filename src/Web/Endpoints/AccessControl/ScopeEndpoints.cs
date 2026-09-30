@@ -25,6 +25,7 @@ public sealed class ScopeEndpoints : IEndpointGroup
         })
         .RequirePermission("AccessManagement.Resource.Read")
         .WithName("GetResourceTree")
-        .Produces<List<ScopeResourceTreeDto>>(StatusCodes.Status200OK);
+        .Produces<List<ScopeResourceTreeDto>>(StatusCodes.Status200OK)
+        .ProducesProblem(StatusCodes.Status404NotFound);
     }
 }

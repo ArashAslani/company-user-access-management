@@ -1,3 +1,4 @@
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.AccessControl;
 using CompanyAccessManagement.Domain.Constants;
 using CompanyAccessManagement.Infrastructure.Identity;
@@ -104,11 +105,11 @@ public class ApplicationDbContextInitialiser
             .Include(a => a.Resources)
                 .ThenInclude(r => r.Permissions)
                     .ThenInclude(p => p.Implications)
-            .FirstOrDefaultAsync(a => a.Code == "QC");
+            .FirstOrDefaultAsync(a => a.Code == AccessControlApplication.Code);
 
         if (qcApp is null)
         {
-            qcApp = new Domain.AccessControl.Application("QC", "Quality Control", "Quality Control Application");
+            qcApp = new Domain.AccessControl.Application(AccessControlApplication.Code, "Quality Control", "Quality Control Application");
             _context.Applications.Add(qcApp);
         }
         else

@@ -37,6 +37,7 @@ public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermiss
         var companyId = _workspace.RequireCompanyId();
 
         var targetRole = await _context.Roles
+            .InAccessControlApplication(_context)
             .FirstOrDefaultAsync(r => r.Id == request.RoleId && r.CompanyId == companyId, cancellationToken);
 
         Guard.Against.NotFound(request.RoleId, targetRole);

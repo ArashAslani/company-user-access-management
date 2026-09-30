@@ -1,5 +1,6 @@
 using CompanyAccessManagement.Application.AccessControl.Scopes.Queries;
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.AccessControl;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,9 @@ public class GetResourceTreeQueryHandler : IRequestHandler<GetResourceTreeQuery,
 
     public async Task<List<ScopeResourceTreeDto>> Handle(GetResourceTreeQuery request, CancellationToken cancellationToken)
     {
+        if (!await _context.IsAccessControlApplicationAsync(request.ApplicationId, cancellationToken))
+            throw new NotFoundException(request.ApplicationId.ToString(), "Application");
+
         var rootResources = await _context.Resources
             .Where(r => r.ApplicationId == request.ApplicationId && r.ParentResourceId == null)
             .ToListAsync(cancellationToken);
