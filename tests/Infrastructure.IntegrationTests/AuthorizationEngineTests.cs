@@ -520,9 +520,9 @@ public class AuthorizationEngineTests : TestBase
     }
 
     [Test]
-    public async Task EvaluateAsync_GlobalSuperAdmin_CrossCompanyAllowed()
+    public async Task GlobalSuperAdmin_RootCompany_CrossCompanyAllowed()
     {
-        // Global Super Admin should have access across companies
+        (await Context.Companies.Where(c => c.Id == _companyId).Select(c => c.ParentCompanyId).SingleAsync()).ShouldBeNull();
         var companyB = await CreateCompanyAsync("COMPB", "Company B");
 
         var globalSuperAdminRole = await CreateRoleAsync(_companyId, _appId, "GlobalSuperAdmin", "GLOBAL_SUPER", RoleKind.GlobalSuperAdmin);
@@ -838,7 +838,47 @@ public class AuthorizationEngineTests : TestBase
     }
 
     [Test]
-    public async Task EvaluateAsync_ExpiredGlobalSuperAdmin_DoesNotGrant()
+    public async Task GlobalSuperAdmin_ChildCompany_DoesNotGrantGlobalAccess()
+    {
+        var child = new Company("CHILD", "Child Company", parentCompanyId: _companyId);
+        Context.Companies.Add(child);
+        await Context.SaveChangesAsync(default);
+        var otherRoot = await CreateCompanyAsync("COMPB", "Company B");
+
+        var member = await CreateMemberAsync("child-admin@test.com", child.Id);
+        var role = await CreateRoleAsync(child.Id, _appId, "GlobalSuperAdmin", "GLOBAL_SUPER", RoleKind.GlobalSuperAdmin);
+        await CreateAuthPrincipalForRoleAsync(role.Id, child.Id, _appId);
+        var membership = await Context.UserCompanies.SingleAsync(uc => uc.UserId == member.UserId && uc.CompanyId == child.Id);
+        membership.AddRole(role.Id);
+        await Context.SaveChangesAsync(default);
+
+        var parentDecision = await EvaluateAsync(new AccessRequest(member.UserId, _companyId, "QC", "Products.Read"));
+        var otherRootDecision = await EvaluateAsync(new AccessRequest(member.UserId, otherRoot, "QC", "Products.Read"));
+
+        parentDecision.Allowed.ShouldBeFalse();
+        parentDecision.ReasonCode.ShouldBe("DENIED_MEMBERSHIP");
+        otherRootDecision.Allowed.ShouldBeFalse();
+        otherRootDecision.ReasonCode.ShouldBe("DENIED_MEMBERSHIP");
+    }
+
+    [Test]
+    public async Task InactiveGlobalSuperAdmin_Denied()
+    {
+        var companyB = await CreateCompanyAsync("COMPB", "Company B");
+        var role = await CreateRoleAsync(_companyId, _appId, "GlobalSuperAdmin", "GLOBAL_SUPER", RoleKind.GlobalSuperAdmin);
+        await CreateAuthPrincipalForRoleAsync(role.Id, _companyId, _appId);
+        role.SetStatus(RoleStatus.Inactive);
+        await Context.SaveChangesAsync(default);
+        await AssignRolesToTestUserAsync(role.Id);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, companyB, "QC", "Products.Read"));
+
+        decision.Allowed.ShouldBeFalse();
+        decision.ReasonCode.ShouldBe("DENIED_MEMBERSHIP");
+    }
+
+    [Test]
+    public async Task ExpiredGlobalSuperAdmin_Denied()
     {
         var companyB = await CreateCompanyAsync("COMPB", "Company B");
         var role = await CreateExpiredRoleAsync("GlobalSuperAdmin", "GLOBAL_SUPER", RoleKind.GlobalSuperAdmin);

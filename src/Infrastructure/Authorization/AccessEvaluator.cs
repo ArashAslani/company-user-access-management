@@ -72,14 +72,17 @@ public class AccessEvaluator : IAccessEvaluator
             throw new ForbiddenAccessException();
     }
 
+    /// <summary>A GlobalSuperAdmin role grants cross-company access only when it belongs to a root company (ADR-0006).</summary>
     internal static async Task<Guid?> FindGlobalSuperAdminRoleAsync(IApplicationDbContext context, Guid userId, DateTime now, CancellationToken cancellationToken)
     {
         return await (from uc in context.UserCompanies
                       where uc.UserId == userId && uc.Status == UserCompanyStatus.Active
                       from ur in uc.Roles
                       join r in context.Roles on ur.RoleId equals r.Id
+                      join c in context.Companies on r.CompanyId equals c.Id
                       where r.Kind == RoleKind.GlobalSuperAdmin && r.Status == RoleStatus.Active
                           && (r.ValidUntil == null || r.ValidUntil > now)
+                          && c.ParentCompanyId == null
                       select (Guid?)r.Id).FirstOrDefaultAsync(cancellationToken);
     }
 
