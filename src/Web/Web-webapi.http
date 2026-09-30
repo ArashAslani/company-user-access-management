@@ -1,10 +1,11 @@
-﻿# For more info on HTTP files go to https://aka.ms/vs/httpfile
-@Web_HostAddress = https://localhost:5001
+# For more info on HTTP files go to https://aka.ms/vs/httpfile
+@Web_HostAddress = http://localhost:5000
 
 @Email=administrator@localhost
 @Password=Administrator1!
 @BearerToken=<YourToken>
-@CompanyId=<YourCompanyId>
+# Demo Company, seeded in Development (see README)
+@CompanyId=d3e00000-0000-0000-0000-000000000002
 
 # Log in (ASP.NET Core Identity bearer tokens)
 POST {{Web_HostAddress}}/login

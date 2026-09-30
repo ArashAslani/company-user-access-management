@@ -113,7 +113,7 @@ dotnet build
 dotnet run --project src/Web      # http://localhost:5000, Scalar UI at /scalar
 ```
 
-On startup in Development, the app applies EF Core migrations (never `EnsureCreated`) to `CleanArchitecture.db` and runs an idempotent seeder. The seeder creates:
+On startup in Development, the app applies EF Core migrations (never `EnsureCreated`) to `CompanyAccessManagement.db` and runs an idempotent seeder. The seeder creates:
 
 - the `Administrator` identity role;
 - the `administrator@localhost` / `Administrator1!` user;
