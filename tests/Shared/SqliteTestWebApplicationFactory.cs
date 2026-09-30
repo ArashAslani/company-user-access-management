@@ -17,9 +17,12 @@ namespace CompanyAccessManagement.Testing;
 public class SqliteTestWebApplicationFactory : WebApplicationFactory<Program>
 {
     private readonly string _connectionString;
+    private readonly TimeProvider? _timeProvider;
 
-    public SqliteTestWebApplicationFactory()
+    /// <param name="timeProvider">Replaces the system clock, e.g. with a FakeTimeProvider for expiry tests.</param>
+    public SqliteTestWebApplicationFactory(TimeProvider? timeProvider = null)
     {
+        _timeProvider = timeProvider;
         DatabasePath = Path.Combine(Path.GetTempPath(), $"company-access-api-{Guid.NewGuid():N}.db");
         _connectionString = new SqliteConnectionStringBuilder
         {
@@ -39,6 +42,8 @@ public class SqliteTestWebApplicationFactory : WebApplicationFactory<Program>
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<IEmailSender<ApplicationUser>, NoOpEmailSender>();
+            if (_timeProvider is not null)
+                services.AddSingleton(_timeProvider);
         });
     }
 

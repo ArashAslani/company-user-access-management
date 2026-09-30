@@ -112,11 +112,7 @@ public class UpdateRolePermissionsCommandHandler : IRequestHandler<UpdateRolePer
             }
         }
 
-        // Update policy revision
-        var app = await _context.Applications.FirstOrDefaultAsync(a => a.Id == role.ApplicationId, cancellationToken);
-        if (app != null)
-            app.IncrementPolicyRevision();
-
+        // Company.AuthorizationRevision is bumped atomically by AuthorizationRevisionInterceptor (ADR-0007).
         await _context.SaveChangesAsync(cancellationToken);
     }
 }

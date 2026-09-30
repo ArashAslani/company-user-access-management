@@ -18,7 +18,7 @@ public class ApplicationConfiguration : IEntityTypeConfiguration<CompanyAccessMa
         builder.Property(a => a.Name).IsRequired().HasMaxLength(100);
         builder.Property(a => a.Description).HasMaxLength(500);
         builder.Property(a => a.IsActive).IsRequired();
-        builder.Property(a => a.PolicyRevision).IsRequired();
+        builder.Property(a => a.PolicyRevision).IsRequired().IsConcurrencyToken();
 
         builder.HasIndex(a => a.Code).IsUnique();
 

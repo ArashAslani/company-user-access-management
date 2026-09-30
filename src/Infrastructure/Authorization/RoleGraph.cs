@@ -22,6 +22,8 @@ internal sealed class RoleGraph
 
     public bool TryGet(Guid roleId, out RoleNode role) => _roles.TryGetValue(roleId, out role!);
 
+    public IEnumerable<RoleNode> All => _roles.Values;
+
     /// <summary>The role itself followed by every role beneath it.</summary>
     public IEnumerable<Guid> SelfAndDescendants(Guid roleId)
     {

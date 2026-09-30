@@ -3,6 +3,7 @@ using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.AccessControl;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace CompanyAccessManagement.Infrastructure.Authorization;
 
@@ -17,28 +18,34 @@ namespace CompanyAccessManagement.Infrastructure.Authorization;
 /// <item>Inactive or expired roles (including super-admin roles) grant nothing; a delegation is valid only while the delegator,
 /// as an active member of the request company, is allowed the permission without counting delegations.</item>
 /// </list>
-/// </summary>
+/// Decisions for active members are cached (ADR-0007) under a key that includes the membership, company and application
+/// revisions, and expire at the earliest role or rule validity boundary involved, or after <see cref=
 public class AccessEvaluator : IAccessEvaluator
 {
+    public static readonly TimeSpan MaxCacheLifetime = TimeSpan.FromMinutes(5);
+
     private readonly IApplicationDbContext _context;
     private readonly TimeProvider _timeProvider;
+    private readonly IMemoryCache _cache;
 
-    public AccessEvaluator(IApplicationDbContext context, TimeProvider timeProvider)
+    public AccessEvaluator(IApplicationDbContext context, TimeProvider timeProvider, IMemoryCache cache)
     {
         _context = context;
         _timeProvider = timeProvider;
+        _cache = cache;
     }
 
     public async Task<AccessDecision> EvaluateAsync(AccessRequest request, CancellationToken cancellationToken = default)
     {
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
-        var applicationId = await _context.Applications
+        var application = await _context.Applications
             .Where(a => a.Code == request.ApplicationCode && a.IsActive)
-            .Select(a => (Guid?)a.Id)
+            .Select(a => new { a.Id, a.PolicyRevision })
             .FirstOrDefaultAsync(cancellationToken);
-        if (applicationId is null)
+        if (application is null)
             return Denied("DENIED_APPLICATION");
+        var applicationId = application.Id;
 
         var permissionId = await (from p in _context.Permissions
                                   join r in _context.Resources on p.ResourceId equals r.Id
@@ -51,19 +58,53 @@ public class AccessEvaluator : IAccessEvaluator
         if (globalSuperAdminRoleId is not null)
             return new AccessDecision(true, "ALLOWED_GLOBAL_SUPER_ADMIN", [new AccessSource("GlobalSuperAdmin", globalSuperAdminRoleId.Value.ToString(), "All")]);
 
-        var session = await EvaluationSession.CreateAsync(_context, request, applicationId.Value, permissionId.Value, now, cancellationToken);
+        // Revisions are read before any evaluation state: a mutation committed after this point changes the key,
+        // so a decision computed from newer state is only ever stored under a key that is no longer requested.
+        var revisions = await (from uc in _context.UserCompanies
+                               join c in _context.Companies on uc.CompanyId equals c.Id
+                               where uc.UserId == request.UserId && uc.CompanyId == request.CompanyId && uc.Status == UserCompanyStatus.Active
+                               select new { Membership = uc.AuthorizationRevision, Company = c.AuthorizationRevision })
+                              .FirstOrDefaultAsync(cancellationToken);
+        if (revisions is null)
+            return Denied("DENIED_MEMBERSHIP");
+
+        var key = new DecisionCacheKey(request.UserId, request.CompanyId, request.ApplicationCode, request.PermissionCode,
+            request.ScopeType, request.ScopeKey, revisions.Membership, revisions.Company, application.PolicyRevision);
+        if (_cache.TryGetValue(key, out CachedDecision? cached) && cached!.ExpiresAt > now)
+            return cached.Decision;
+
+        var session = await EvaluationSession.CreateAsync(_context, request, applicationId, permissionId.Value, now, cancellationToken);
 
         var subject = await session.LoadSubjectAsync(request.UserId, cancellationToken);
         if (subject is null)
             return Denied("DENIED_MEMBERSHIP");
 
+        AccessDecision decision;
         var companySuperAdminRoleId = session.FindCompanySuperAdminRole(subject);
         if (companySuperAdminRoleId is not null)
-            return new AccessDecision(true, "ALLOWED_COMPANY_SUPER_ADMIN", [new AccessSource("CompanySuperAdmin", companySuperAdminRoleId.Value.ToString(), "All")]);
+        {
+            decision = new AccessDecision(true, "ALLOWED_COMPANY_SUPER_ADMIN", [new AccessSource("CompanySuperAdmin", companySuperAdminRoleId.Value.ToString(), "All")]);
+        }
+        else
+        {
+            var outcome = await session.EvaluateAsync(subject, permissionId.Value, excludeDelegation: false, cancellationToken);
+            decision = new AccessDecision(outcome.Allowed, outcome.ReasonCode, outcome.Sources);
+        }
 
-        var outcome = await session.EvaluateAsync(subject, permissionId.Value, excludeDelegation: false, cancellationToken);
-        return new AccessDecision(outcome.Allowed, outcome.ReasonCode, outcome.Sources);
+        var expiresAt = now + MaxCacheLifetime;
+        if (await session.EarliestValidityBoundaryAsync(cancellationToken) is DateTime boundary && boundary < expiresAt)
+            expiresAt = boundary;
+        _cache.Set(key, new CachedDecision(decision, expiresAt), expiresAt - now);
+
+        return decision;
     }
+
+    private sealed record DecisionCacheKey(
+        Guid UserId, Guid CompanyId, string ApplicationCode, string PermissionCode, string? ScopeType, string? ScopeKey,
+        long MembershipRevision, long CompanyRevision, long PolicyRevision);
+
+    /// <param name="ExpiresAt">Checked against <see cref="TimeProvider"/> on every read; the cache's own expiry is only a backstop.</param>
+    private sealed record CachedDecision(AccessDecision Decision, DateTime ExpiresAt);
 
     public async Task EnsureAllowedAsync(AccessRequest request, CancellationToken cancellationToken = default)
     {
@@ -175,6 +216,38 @@ public class AccessEvaluator : IAccessEvaluator
 
             return new EvaluationSession(
                 context, request, now, requireAllScope, new RoleGraph(roles), roleIdByPrincipal, directPrerequisites, relevantPermissions, roleRules);
+        }
+
+        /// <summary>
+        /// Earliest future instant at which a role or rule that can affect this request changes validity: any role's
+        /// ValidUntil in the company and application, and ValidFrom / ValidUntil of every active rule in the company on the
+        /// permission or its prerequisites (direct, role, delegated and delegator rules alike). Null when nothing changes.
+        /// </summary>
+        public async Task<DateTime?> EarliestValidityBoundaryAsync(CancellationToken cancellationToken)
+        {
+            var now = _now;
+            var boundaries = _roles.All
+                .Where(r => r.ValidUntil > now)
+                .Select(r => r.ValidUntil!.Value)
+                .ToList();
+
+            var windows = await (from ar in _context.AccessRules
+                                 join ap in _context.AuthPrincipals on ar.PrincipalId equals ap.Id
+                                 where ap.CompanyId == _request.CompanyId
+                                     && ar.Status == AccessRuleStatus.Active
+                                     && _relevantPermissions.Contains(ar.PermissionId)
+                                     && ((ar.ValidFrom != null && ar.ValidFrom > now) || (ar.ValidUntil != null && ar.ValidUntil > now))
+                                 select new { ar.ValidFrom, ar.ValidUntil }).ToListAsync(cancellationToken);
+
+            foreach (var window in windows)
+            {
+                if (window.ValidFrom > now)
+                    boundaries.Add(window.ValidFrom.Value);
+                if (window.ValidUntil > now)
+                    boundaries.Add(window.ValidUntil.Value);
+            }
+
+            return boundaries.Count == 0 ? null : boundaries.Min();
         }
 
         public async Task<Subject?> LoadSubjectAsync(Guid userId, CancellationToken cancellationToken)

@@ -24,12 +24,14 @@ public abstract class TestBase
     [SetUp]
     public virtual async Task SetUp()
     {
-        Factory = new SqliteTestWebApplicationFactory();
+        Factory = CreateFactory();
         await Factory.InitializeAsync();
 
         Scope = Factory.Services.CreateScope();
         Context = Scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
     }
+
+    protected virtual SqliteTestWebApplicationFactory CreateFactory() => new();
 
     [TearDown]
     public virtual void TearDown()

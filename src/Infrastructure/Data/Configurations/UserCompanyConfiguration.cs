@@ -18,7 +18,7 @@ public class UserCompanyConfiguration : IEntityTypeConfiguration<UserCompany>
         builder.Property(uc => uc.CompanyId).IsRequired();
         builder.Property(uc => uc.PrincipalId).IsRequired();
         builder.Property(uc => uc.Status).IsRequired().HasConversion<int>();
-        builder.Property(uc => uc.AuthorizationRevision).IsRequired();
+        builder.Property(uc => uc.AuthorizationRevision).IsRequired().IsConcurrencyToken();
 
         builder.HasIndex(uc => new { uc.UserId, uc.CompanyId }).IsUnique();
         builder.HasIndex(uc => uc.PrincipalId).IsUnique();
