@@ -39,9 +39,11 @@ public sealed class PersonnelPosition : BaseEntity
 
     public bool HasStarted(DateTime now) => EffectiveFrom <= now;
 
-    public bool IsCurrentlyEffective(DateTime? at = null)
+    /// <summary>Active and not yet ended: currently effective or starting in the future.</summary>
+    public bool IsCurrentOrUpcoming(DateTime now) => IsActive && (EffectiveTo == null || EffectiveTo > now);
+
+    public bool IsCurrentlyEffective(DateTime now)
     {
-        var now = at ?? DateTime.UtcNow;
         return Status == PersonnelPositionStatus.Active
             && EffectiveFrom <= now
             && (EffectiveTo == null || EffectiveTo > now);

@@ -34,6 +34,8 @@ public class AssignPositionCommandHandler : IRequestHandler<AssignPositionComman
         if (!await PersonnelWorkspaceScope.IsPositionInCompanyAsync(_context, request.PositionId, companyId, cancellationToken))
             throw new NotFoundException(request.PositionId.ToString(), "Position");
 
+        await PositionCompanyLookup.EnsurePositionActiveAsync(_context, request.PositionId, cancellationToken);
+
         var personnel = await _context.Personnel
             .Include(p => p.Positions)
             .FirstOrDefaultAsync(p => p.Id == request.PersonnelId, cancellationToken);

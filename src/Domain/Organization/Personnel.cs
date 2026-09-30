@@ -42,14 +42,46 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         Gender = gender;
     }
 
-    public void SetStatus(PersonnelStatus status)
+    /// <summary>
+    /// Explicit status changes. Employment is never set directly: it follows an effective position assignment or
+    /// <see cref="ConfirmEmployment"/>. Deactivation requires no effective position; reactivation returns to Draft or Employed.
+    /// </summary>
+    public void ChangeStatus(PersonnelStatus status, DateTime now)
     {
-        Status = status;
+        if (status == Status)
+            return;
+
+        switch (status)
+        {
+            case PersonnelStatus.Inactive:
+                Deactivate(now);
+                break;
+            case PersonnelStatus.Draft when Status == PersonnelStatus.Inactive:
+                Status = HasEffectivePosition(now) ? PersonnelStatus.Employed : PersonnelStatus.Draft;
+                break;
+            case PersonnelStatus.Draft:
+                RevertToDraft(now);
+                break;
+            default:
+                throw TransitionInvalid("Employment starts only through an effective position assignment.");
+        }
+    }
+
+    /// <summary>Soft delete: the person, their signatures and assignment history are kept.</summary>
+    public void Deactivate(DateTime now)
+    {
+        if (!CanDelete(now))
+            throw TransitionInvalid("Personnel with an effective position cannot be deactivated.");
+
+        Status = PersonnelStatus.Inactive;
     }
 
     /// <param name="positionCompanies">Company of every position this personnel is (or will be) assigned to, including <paramref name="positionId"/>.</param>
     public PersonnelPosition AssignPosition(Guid positionId, bool isPrimary, DateTime effectiveFrom, DateTime? effectiveTo, DateTime now, IReadOnlyDictionary<Guid, Guid> positionCompanies)
     {
+        if (Status == PersonnelStatus.Inactive)
+            throw new DomainRuleViolationException("PERSONNEL_INACTIVE", "Inactive personnel cannot be assigned to a position.");
+
         EnsureNoOverlapOnSamePosition(positionId, effectiveFrom, effectiveTo, excludeAssignmentId: null);
         if (isPrimary)
             EnsureNoOverlappingPrimaryInSameCompany(positionId, effectiveFrom, effectiveTo, excludeAssignmentId: null, positionCompanies);
@@ -57,7 +89,7 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         var assignment = new PersonnelPosition(Id, positionId, isPrimary, effectiveFrom, effectiveTo, now);
         _positions.Add(assignment);
 
-        if (Status == PersonnelStatus.Draft && _positions.Any(p => p.IsCurrentlyEffective(now)))
+        if (Status == PersonnelStatus.Draft && HasEffectivePosition(now))
             Status = PersonnelStatus.Employed;
 
         AddDomainEvent(new PersonnelPositionAssignedEvent(Id, positionId, isPrimary));
@@ -103,7 +135,7 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
 
         assignment.Deactivate(now);
 
-        if (Status == PersonnelStatus.Employed && !_positions.Any(p => p.IsCurrentlyEffective(now)))
+        if (Status == PersonnelStatus.Employed && !HasEffectivePosition(now))
             Status = PersonnelStatus.Draft;
 
         AddDomainEvent(new PersonnelPositionRemovedEvent(Id, assignment.PositionId));
@@ -189,32 +221,34 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
 
     public PersonnelSignature? GetCurrentSignature() => _signatures.FirstOrDefault(s => s.IsCurrent);
 
-    public bool CanDelete()
-    {
-        return !_positions.Any(p => p.IsCurrentlyEffective());
-    }
+    public bool CanDelete(DateTime now) => !HasEffectivePosition(now);
 
-    public void ConfirmEmployment()
+    public void ConfirmEmployment(DateTime now)
     {
         if (Status != PersonnelStatus.Draft)
-            throw new InvalidOperationException("Only Draft personnel can confirm employment.");
+            throw TransitionInvalid("Only Draft personnel can confirm employment.");
 
-        if (!_positions.Any(p => p.IsCurrentlyEffective()))
-            throw new InvalidOperationException("Cannot confirm employment: no effective position assigned.");
+        if (!HasEffectivePosition(now))
+            throw TransitionInvalid("Cannot confirm employment: no effective position assigned.");
 
         Status = PersonnelStatus.Employed;
     }
 
-    public void RevertToDraft()
+    public void RevertToDraft(DateTime now)
     {
         if (Status != PersonnelStatus.Employed)
-            throw new InvalidOperationException("Only Employed personnel can revert to draft.");
+            throw TransitionInvalid("Only Employed personnel can revert to draft.");
 
-        if (_positions.Any(p => p.IsCurrentlyEffective()))
-            throw new InvalidOperationException("Cannot revert to draft: has effective position assignments.");
+        if (HasEffectivePosition(now))
+            throw TransitionInvalid("Cannot revert to draft: has effective position assignments.");
 
         Status = PersonnelStatus.Draft;
     }
+
+    private bool HasEffectivePosition(DateTime now) => _positions.Any(p => p.IsCurrentlyEffective(now));
+
+    private static DomainRuleViolationException TransitionInvalid(string message)
+        => new("PERSONNEL_STATUS_TRANSITION_INVALID", message);
 }
 
 public enum Gender { Male, Female }

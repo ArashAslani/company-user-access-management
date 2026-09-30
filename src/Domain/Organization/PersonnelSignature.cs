@@ -29,7 +29,6 @@ public sealed class PersonnelSignature : BaseAuditableEntity<Guid>
         Content = content;
         IsCurrent = true;
         CreatedByUserId = createdByUserId;
-        Created = DateTimeOffset.UtcNow;
     }
 
     public void SetNotCurrent()

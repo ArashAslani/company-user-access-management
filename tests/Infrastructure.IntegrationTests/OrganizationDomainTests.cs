@@ -79,8 +79,7 @@ public class OrganizationDomainTests : TestBase
         Context.Positions.Add(position);
         await Context.SaveChangesAsync(default);
 
-        var ex = Assert.Throws<InvalidOperationException>(() => position.ChangeParent(position.Id));
-        Assert.That(ex.Message, Does.Contain("cannot be its own parent"));
+        ShouldViolate(() => position.ChangeParent(position.Id), "HIERARCHY_CYCLE");
     }
 
     [Test]
@@ -143,7 +142,7 @@ public class OrganizationDomainTests : TestBase
         var assignment = _personnel.AssignPosition(_positionId, false, futureDate, null, Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
-        assignment.IsCurrentlyEffective().ShouldBeFalse();
+        assignment.IsCurrentlyEffective(Now).ShouldBeFalse();
         assignment.IsCurrentlyEffective(futureDate.AddDays(1)).ShouldBeTrue();
     }
 
@@ -153,7 +152,7 @@ public class OrganizationDomainTests : TestBase
         var assignment = _personnel.AssignPosition(_positionId, false, Now.AddDays(-10), Now.AddDays(-5), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
-        assignment.IsCurrentlyEffective().ShouldBeFalse();
+        assignment.IsCurrentlyEffective(Now).ShouldBeFalse();
     }
 
     [Test]
@@ -162,7 +161,7 @@ public class OrganizationDomainTests : TestBase
         var assignment = _personnel.AssignPosition(_positionId, true, Now.AddDays(-5), Now.AddDays(5), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
-        assignment.IsCurrentlyEffective().ShouldBeTrue();
+        assignment.IsCurrentlyEffective(Now).ShouldBeTrue();
         assignment.IsPrimary.ShouldBeTrue();
     }
 
@@ -210,7 +209,7 @@ public class OrganizationDomainTests : TestBase
         var future = _personnel.AssignPosition(_positionId, false, Now.AddDays(10), null, Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
-        future.IsCurrentlyEffective().ShouldBeFalse();
+        future.IsCurrentlyEffective(Now).ShouldBeFalse();
         _personnel.Positions.Count.ShouldBe(2);
     }
 
@@ -223,7 +222,7 @@ public class OrganizationDomainTests : TestBase
         var replacement = _personnel.AssignPosition(_positionId, false, Now.AddDays(-4), null, Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
-        replacement.IsCurrentlyEffective().ShouldBeTrue();
+        replacement.IsCurrentlyEffective(Now).ShouldBeTrue();
     }
 
     [Test]
@@ -325,7 +324,7 @@ public class OrganizationDomainTests : TestBase
         _personnel.AssignPosition(otherPosition, true, Now.AddDays(-3), Now.AddDays(7), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
 
-        _personnel.Positions.Count(p => p.IsPrimary && p.IsCurrentlyEffective()).ShouldBe(2);
+        _personnel.Positions.Count(p => p.IsPrimary && p.IsCurrentlyEffective(Now)).ShouldBe(2);
     }
 
     [Test]
@@ -367,7 +366,8 @@ public class OrganizationDomainTests : TestBase
         Context.Personnel.Add(personnel);
         await Context.SaveChangesAsync(default);
 
-        var ex = Assert.Throws<InvalidOperationException>(() => personnel.ConfirmEmployment());
+        var ex = Should.Throw<DomainRuleViolationException>(() => personnel.ConfirmEmployment(Now));
+        ex.Code.ShouldBe("PERSONNEL_STATUS_TRANSITION_INVALID");
         Assert.That(ex.Message, Does.Contain("effective position"));
 
         // Assigning an effective position confirms employment (Draft -> Employed)
@@ -381,14 +381,15 @@ public class OrganizationDomainTests : TestBase
     public async Task Personnel_RevertToDraft_RequiresNoEffectivePositions()
     {
         var personnel = new Personnel("9876543210", "Jane", "Smith", Gender.Female);
-        personnel.SetStatus(PersonnelStatus.Employed);
         Context.Personnel.Add(personnel);
         await Context.SaveChangesAsync(default);
 
         personnel.AssignPosition(_positionId, true, Now.AddDays(-1), Now.AddDays(10), Now, PositionCompanies());
         await Context.SaveChangesAsync(default);
+        personnel.Status.ShouldBe(PersonnelStatus.Employed);
 
-        var ex = Assert.Throws<InvalidOperationException>(() => personnel.RevertToDraft());
+        var ex = Should.Throw<DomainRuleViolationException>(() => personnel.RevertToDraft(Now));
+        ex.Code.ShouldBe("PERSONNEL_STATUS_TRANSITION_INVALID");
         Assert.That(ex.Message, Does.Contain("effective position"));
     }
 
@@ -421,8 +422,8 @@ public class OrganizationDomainTests : TestBase
         var position = await Context.Positions.FindAsync(_positionId);
         Assert.That(position, Is.Not.Null);
 
-        var ex = Assert.Throws<InvalidOperationException>(() => position!.SetStatus(PositionStatus.Inactive));
-        Assert.That(ex.Message, Does.Contain("active personnel assignments"));
+        ShouldViolate(() => position!.SetStatus(PositionStatus.Inactive, Now), "POSITION_HAS_ACTIVE_ASSIGNMENTS");
+        position!.Status.ShouldBe(PositionStatus.Active);
     }
 
     [Test]
@@ -437,7 +438,70 @@ public class OrganizationDomainTests : TestBase
         _personnel.RemovePositionAssignment(assignment.Id, Now);
         await Context.SaveChangesAsync(default);
 
-        position!.SetStatus(PositionStatus.Inactive);
+        position!.SetStatus(PositionStatus.Inactive, Now);
+        position.Status.ShouldBe(PositionStatus.Inactive);
+    }
+
+    [TestCase(PersonnelStatus.Draft)]
+    [TestCase(PersonnelStatus.Inactive)]
+    public void Personnel_ChangeStatus_ToEmployed_Denied(PersonnelStatus from)
+    {
+        var personnel = new Personnel("1112223334", "Jane", "Smith", Gender.Female);
+        personnel.ChangeStatus(from, Now);
+
+        ShouldViolate(() => personnel.ChangeStatus(PersonnelStatus.Employed, Now), "PERSONNEL_STATUS_TRANSITION_INVALID");
+        personnel.Status.ShouldBe(from);
+    }
+
+    [Test]
+    public void Personnel_Deactivate_WithEffectivePosition_Denied()
+    {
+        _personnel.AssignPosition(_positionId, true, Now.AddDays(-1), null, Now, PositionCompanies());
+
+        ShouldViolate(() => _personnel.ChangeStatus(PersonnelStatus.Inactive, Now), "PERSONNEL_STATUS_TRANSITION_INVALID");
+        ShouldViolate(() => _personnel.Deactivate(Now), "PERSONNEL_STATUS_TRANSITION_INVALID");
+        _personnel.Status.ShouldBe(PersonnelStatus.Employed);
+    }
+
+    [Test]
+    public void Personnel_DeactivateAndReactivate_WithoutPosition()
+    {
+        _personnel.ChangeStatus(PersonnelStatus.Inactive, Now);
+        _personnel.Status.ShouldBe(PersonnelStatus.Inactive);
+
+        _personnel.ChangeStatus(PersonnelStatus.Draft, Now);
+        _personnel.Status.ShouldBe(PersonnelStatus.Draft);
+    }
+
+    [Test]
+    public void Personnel_Inactive_CannotBeAssigned()
+    {
+        _personnel.Deactivate(Now);
+
+        ShouldViolate(() => _personnel.AssignPosition(_positionId, true, Now, null, Now, PositionCompanies()), "PERSONNEL_INACTIVE");
+        _personnel.Positions.ShouldBeEmpty();
+    }
+
+    [Test]
+    public async Task Position_UpcomingAssignment_BlocksDeactivation()
+    {
+        _personnel.AssignPosition(_positionId, false, Now.AddDays(5), null, Now, PositionCompanies());
+        await Context.SaveChangesAsync(default);
+        var position = await Context.Positions.Include(p => p.Assignments).SingleAsync(p => p.Id == _positionId);
+
+        ShouldViolate(() => position.SetStatus(PositionStatus.Inactive, Now), "POSITION_HAS_ACTIVE_ASSIGNMENTS");
+        position.Status.ShouldBe(PositionStatus.Active);
+    }
+
+    [Test]
+    public async Task Position_EndedAssignment_DoesNotBlockDeactivation()
+    {
+        _personnel.AssignPosition(_positionId, false, Now.AddDays(-20), Now.AddDays(-10), Now, PositionCompanies());
+        await Context.SaveChangesAsync(default);
+        var position = await Context.Positions.Include(p => p.Assignments).SingleAsync(p => p.Id == _positionId);
+
+        position.SetStatus(PositionStatus.Inactive, Now);
+
         position.Status.ShouldBe(PositionStatus.Inactive);
     }
 }

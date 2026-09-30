@@ -22,11 +22,13 @@ public class GetPersonnelQueryHandler : IRequestHandler<GetPersonnelQuery, Pagin
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
+    private readonly TimeProvider _timeProvider;
 
-    public GetPersonnelQueryHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
+    public GetPersonnelQueryHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider)
     {
         _context = context;
         _workspace = workspace;
+        _timeProvider = timeProvider;
     }
 
     public async Task<PaginatedList<PersonnelDto>> Handle(GetPersonnelQuery request, CancellationToken cancellationToken)
@@ -74,11 +76,11 @@ public class GetPersonnelQueryHandler : IRequestHandler<GetPersonnelQuery, Pagin
             .Take(request.PageSize)
             .ToListAsync(cancellationToken);
 
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
         var items = personnelList.Select(p =>
         {
             var workspacePositions = p.Positions.Where(pp => pp.Position?.CompanyId == companyId).ToList();
-            var effectivePos = workspacePositions.FirstOrDefault(pp => pp.IsCurrentlyEffective());
-            var primaryPos = workspacePositions.FirstOrDefault(pp => pp.IsPrimary && pp.IsCurrentlyEffective());
+            var primaryPos = workspacePositions.FirstOrDefault(pp => pp.IsPrimary && pp.IsCurrentlyEffective(now));
 
             return new PersonnelDto
             {

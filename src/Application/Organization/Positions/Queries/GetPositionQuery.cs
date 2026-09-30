@@ -18,11 +18,13 @@ public class GetPositionQueryHandler : IRequestHandler<GetPositionQuery, Positio
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
+    private readonly TimeProvider _timeProvider;
 
-    public GetPositionQueryHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
+    public GetPositionQueryHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider)
     {
         _context = context;
         _workspace = workspace;
+        _timeProvider = timeProvider;
     }
 
     public async Task<PositionDetailDto?> Handle(GetPositionQuery request, CancellationToken cancellationToken)
@@ -38,6 +40,8 @@ public class GetPositionQueryHandler : IRequestHandler<GetPositionQuery, Positio
 
         if (position == null)
             return null;
+
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
 
         return new PositionDetailDto
         {
@@ -58,11 +62,11 @@ public class GetPositionQueryHandler : IRequestHandler<GetPositionQuery, Positio
                 CompanyName = c.CompanyId.ToString(),
                 ParentPositionId = c.ParentPositionId,
                 ParentPositionTitle = c.ParentPosition?.Title,
-                PersonnelCount = c.Assignments.Count(a => a.IsCurrentlyEffective()),
+                PersonnelCount = c.Assignments.Count(a => a.IsCurrentlyEffective(now)),
                 Status = c.Status
             }).ToList(),
             Personnel = position.Assignments
-                .Where(a => a.IsCurrentlyEffective())
+                .Where(a => a.IsCurrentlyEffective(now))
                 .Select(a => new PersonnelPositionDto
                 {
                     PersonnelPositionId = a.Id,

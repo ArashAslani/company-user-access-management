@@ -22,11 +22,13 @@ public class CreatePersonnelCommandHandler : IRequestHandler<CreatePersonnelComm
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
+    private readonly TimeProvider _timeProvider;
 
-    public CreatePersonnelCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
+    public CreatePersonnelCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider)
     {
         _context = context;
         _workspace = workspace;
+        _timeProvider = timeProvider;
     }
 
     public async Task<Guid> Handle(CreatePersonnelCommand request, CancellationToken cancellationToken)
@@ -48,8 +50,8 @@ public class CreatePersonnelCommandHandler : IRequestHandler<CreatePersonnelComm
             null, 
             request.PhoneNumber);
 
-        // Note: Personnel is created in Draft status, will auto-transition to Employed when position assigned
-        personnel.SetStatus(request.Status);
+        // Created as Draft; employment follows an effective position assignment.
+        personnel.ChangeStatus(request.Status, _timeProvider.GetUtcNow().UtcDateTime);
 
         _context.Personnel.Add(personnel);
         await _context.SaveChangesAsync(cancellationToken);

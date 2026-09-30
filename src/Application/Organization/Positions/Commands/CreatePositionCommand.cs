@@ -21,11 +21,13 @@ public class CreatePositionCommandHandler : IRequestHandler<CreatePositionComman
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
+    private readonly TimeProvider _timeProvider;
 
-    public CreatePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
+    public CreatePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider)
     {
         _context = context;
         _workspace = workspace;
+        _timeProvider = timeProvider;
     }
 
     public async Task<Guid> Handle(CreatePositionCommand request, CancellationToken cancellationToken)
@@ -57,7 +59,7 @@ public class CreatePositionCommandHandler : IRequestHandler<CreatePositionComman
             throw new DomainRuleViolationException("POSITION_CODE_DUPLICATE", "Position code must be unique within the company.");
 
         var position = new Position(companyId, request.Code, request.Title, null, request.ParentPositionId);
-        position.SetStatus(request.Status);
+        position.SetStatus(request.Status, _timeProvider.GetUtcNow().UtcDateTime);
 
         _context.Positions.Add(position);
         await _context.SaveChangesAsync(cancellationToken);

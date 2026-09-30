@@ -45,6 +45,9 @@ public class UpdatePositionAssignmentCommandHandler : IRequestHandler<UpdatePosi
         if (!await PersonnelWorkspaceScope.IsPositionInCompanyAsync(_context, assignment.PositionId, companyId, cancellationToken))
             throw new NotFoundException(request.AssignmentId.ToString(), "PersonnelPosition");
 
+        if (request.Status == PersonnelPositionStatus.Active)
+            await PositionCompanyLookup.EnsurePositionActiveAsync(_context, assignment.PositionId, cancellationToken);
+
         var positionCompanies = await PositionCompanyLookup.LoadAsync(_context, personnel, assignment.PositionId, cancellationToken);
 
         personnel.UpdatePositionAssignment(

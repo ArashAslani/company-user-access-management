@@ -28,13 +28,7 @@ public sealed class Position : BaseAuditableEntity<Guid>
         Code = code;
         Title = title;
         Description = description;
-        
-        if (parentPositionId.HasValue)
-        {
-            ValidateParentPosition(parentPositionId.Value);
-            ParentPositionId = parentPositionId;
-        }
-        
+        ParentPositionId = parentPositionId;
         Status = PositionStatus.Active;
     }
 
@@ -45,33 +39,20 @@ public sealed class Position : BaseAuditableEntity<Guid>
         Description = description;
     }
 
+    /// <summary>Parent existence, company and deeper cycles are checked by the application layer (<c>HierarchyCycle</c>).</summary>
     public void ChangeParent(Guid? newParentPositionId)
     {
         if (newParentPositionId == Id)
-            throw new InvalidOperationException("Position cannot be its own parent.");
-
-        if (newParentPositionId.HasValue)
-        {
-            // Cycle detection would require access to the full hierarchy
-            // This is a simplified check - full cycle detection requires repository access
-        }
+            throw new DomainRuleViolationException("HIERARCHY_CYCLE", "Position cannot be its own parent.");
 
         ParentPositionId = newParentPositionId;
     }
 
-    private void ValidateParentPosition(Guid parentPositionId)
+    /// <summary>Deactivation requires the assignments to be loaded; ended assignments are history and do not block it.</summary>
+    public void SetStatus(PositionStatus status, DateTime now)
     {
-        // In a full implementation, this would check:
-        // 1. Parent exists
-        // 2. Parent belongs to same company
-        // 2. No cycle would be created
-        // For now, we assume validation happens at application service layer
-    }
-
-    public void SetStatus(PositionStatus status)
-    {
-        if (status == PositionStatus.Inactive && _assignments.Any(a => a.Status == PersonnelPositionStatus.Active))
-            throw new InvalidOperationException("Cannot deactivate position with active personnel assignments. Reassign or end assignments first.");
+        if (status == PositionStatus.Inactive && _assignments.Any(a => a.IsCurrentOrUpcoming(now)))
+            throw new DomainRuleViolationException("POSITION_HAS_ACTIVE_ASSIGNMENTS", "Cannot deactivate a position with current or upcoming assignments. End or remove them first.");
 
         Status = status;
     }

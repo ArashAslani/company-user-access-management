@@ -55,7 +55,7 @@ public sealed class Role : BaseAuditableEntity<Guid>
     public void ChangeParent(Guid? newParentRoleId)
     {
         if (newParentRoleId == Id)
-            throw new InvalidOperationException("Role cannot be its own parent.");
+            throw new DomainRuleViolationException("HIERARCHY_CYCLE", "Role cannot be its own parent.");
 
         ParentRoleId = newParentRoleId;
     }

@@ -20,11 +20,13 @@ public class UpdatePositionCommandHandler : IRequestHandler<UpdatePositionComman
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
+    private readonly TimeProvider _timeProvider;
 
-    public UpdatePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
+    public UpdatePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider)
     {
         _context = context;
         _workspace = workspace;
+        _timeProvider = timeProvider;
     }
 
     public async Task Handle(UpdatePositionCommand request, CancellationToken cancellationToken)
@@ -32,6 +34,7 @@ public class UpdatePositionCommandHandler : IRequestHandler<UpdatePositionComman
         var companyId = _workspace.RequireCompanyId();
 
         var position = await _context.Positions
+            .Include(p => p.Assignments)
             .FirstOrDefaultAsync(p => p.Id == request.Id && p.CompanyId == companyId, cancellationToken);
 
         Guard.Against.NotFound(request.Id, position);
@@ -65,7 +68,7 @@ public class UpdatePositionCommandHandler : IRequestHandler<UpdatePositionComman
         if (request.ParentPositionId != position.ParentPositionId)
             position.ChangeParent(request.ParentPositionId);
 
-        position.SetStatus(request.Status);
+        position.SetStatus(request.Status, _timeProvider.GetUtcNow().UtcDateTime);
 
         await _context.SaveChangesAsync(cancellationToken);
     }

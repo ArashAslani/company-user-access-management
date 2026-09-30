@@ -16,11 +16,13 @@ public class GetPositionSummaryQueryHandler : IRequestHandler<GetPositionSummary
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
+    private readonly TimeProvider _timeProvider;
 
-    public GetPositionSummaryQueryHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
+    public GetPositionSummaryQueryHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider)
     {
         _context = context;
         _workspace = workspace;
+        _timeProvider = timeProvider;
     }
 
     public async Task<PositionSummaryDto?> Handle(GetPositionSummaryQuery request, CancellationToken cancellationToken)
@@ -35,6 +37,8 @@ public class GetPositionSummaryQueryHandler : IRequestHandler<GetPositionSummary
         if (position == null)
             return null;
 
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+
         return new PositionSummaryDto
         {
             Id = position.Id,
@@ -43,7 +47,7 @@ public class GetPositionSummaryQueryHandler : IRequestHandler<GetPositionSummary
             Status = position.Status,
             Description = position.Description,
             Personnel = position.Assignments
-                .Where(a => a.IsCurrentlyEffective())
+                .Where(a => a.IsCurrentlyEffective(now))
                 .Select(a => new PersonnelSummaryDto
                 {
                     PersonnelId = a.PersonnelId,

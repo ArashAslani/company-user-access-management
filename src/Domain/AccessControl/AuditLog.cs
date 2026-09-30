@@ -37,7 +37,6 @@ public sealed class AuditLog : BaseAuditableEntity<Guid>
         Metadata = metadata;
         TargetPrincipalId = targetPrincipalId;
         PermissionId = permissionId;
-        Created = DateTimeOffset.UtcNow;
     }
 }
 

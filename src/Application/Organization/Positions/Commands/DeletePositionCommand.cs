@@ -16,11 +16,13 @@ public class DeletePositionCommandHandler : IRequestHandler<DeletePositionComman
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
+    private readonly TimeProvider _timeProvider;
 
-    public DeletePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
+    public DeletePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider)
     {
         _context = context;
         _workspace = workspace;
+        _timeProvider = timeProvider;
     }
 
     public async Task Handle(DeletePositionCommand request, CancellationToken cancellationToken)
@@ -33,9 +35,9 @@ public class DeletePositionCommandHandler : IRequestHandler<DeletePositionComman
 
         Guard.Against.NotFound(request.Id, position);
 
-        // Check for active assignments
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
         var activeAssignments = position.Assignments
-            .Where(a => a.IsCurrentlyEffective())
+            .Where(a => a.IsCurrentlyEffective(now))
             .ToList();
 
         if (activeAssignments.Any())
@@ -48,7 +50,7 @@ public class DeletePositionCommandHandler : IRequestHandler<DeletePositionComman
         }
 
         // Soft delete - deactivate
-        position.SetStatus(PositionStatus.Inactive);
+        position.SetStatus(PositionStatus.Inactive, now);
         await _context.SaveChangesAsync(cancellationToken);
     }
 }

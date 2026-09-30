@@ -38,7 +38,7 @@ public sealed class Company : BaseAuditableEntity<Guid>
     public void ChangeParent(Guid? newParentCompanyId)
     {
         if (newParentCompanyId == Id)
-            throw new InvalidOperationException("Company cannot be its own parent.");
+            throw new DomainRuleViolationException("HIERARCHY_CYCLE", "Company cannot be its own parent.");
 
         ParentCompanyId = newParentCompanyId;
     }

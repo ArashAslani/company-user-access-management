@@ -16,11 +16,13 @@ public class DeletePersonnelCommandHandler : IRequestHandler<DeletePersonnelComm
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
+    private readonly TimeProvider _timeProvider;
 
-    public DeletePersonnelCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
+    public DeletePersonnelCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider)
     {
         _context = context;
         _workspace = workspace;
+        _timeProvider = timeProvider;
     }
 
     public async Task Handle(DeletePersonnelCommand request, CancellationToken cancellationToken)
@@ -34,10 +36,11 @@ public class DeletePersonnelCommandHandler : IRequestHandler<DeletePersonnelComm
 
         Guard.Against.NotFound(request.Id, personnel);
 
-        if (!personnel.CanDelete())
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        if (!personnel.CanDelete(now))
             throw new DomainRuleViolationException("EMPLOYED_HAS_ACTIVE_POSITION", "Personnel with an active position cannot be deleted.");
 
-        _context.Personnel.Remove(personnel);
+        personnel.Deactivate(now);
         await _context.SaveChangesAsync(cancellationToken);
     }
 }
