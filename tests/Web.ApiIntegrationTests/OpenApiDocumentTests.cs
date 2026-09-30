@@ -31,6 +31,31 @@ public class OpenApiDocumentTests : ApiTestBase
         paths.ShouldNotContain(p => p.StartsWith("/api/Users", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Test]
+    public async Task IgnoredFields_AreNotPartOfTheContract()
+    {
+        using var document = await GetDocumentAsync();
+        var root = document.RootElement;
+
+        var createPosition = SchemaProperties(root, "CreatePositionCommand");
+        createPosition.ShouldNotContain("kind");
+        createPosition.ShouldNotContain("holdingId");
+        createPosition.ShouldContain("description");
+
+        SchemaProperties(root, "CreateRoleCommand").ShouldNotContain("validFrom");
+
+        SchemaProperties(root, "BulkAssignRoleCommand").OrderBy(p => p).ShouldBe(["roleId", "userCompanyIds"]);
+
+        var getRolesParameters = root.GetProperty("paths").GetProperty("/api/v1/access-control/roles").GetProperty("get")
+            .GetProperty("parameters").EnumerateArray().Select(p => p.GetProperty("name").GetString()).ToList();
+        getRolesParameters.ShouldNotBeEmpty();
+        getRolesParameters.ShouldNotContain("applicationId");
+    }
+
+    private static List<string> SchemaProperties(JsonElement root, string schema) =>
+        root.GetProperty("components").GetProperty("schemas").GetProperty(schema)
+            .GetProperty("properties").EnumerateObject().Select(p => p.Name).ToList();
+
     private async Task<JsonDocument> GetDocumentAsync()
     {
         var response = await Client.GetAsync("/openapi/v1.json");

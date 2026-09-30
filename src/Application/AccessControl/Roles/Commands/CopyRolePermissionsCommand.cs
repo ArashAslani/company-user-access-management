@@ -12,7 +12,13 @@ public record CopyRolePermissionsCommand : IRequest<int>
 {
     public Guid RoleId { get; init; }
     public Guid SourceRoleId { get; init; }
-    public string Mode { get; init; } = "APPEND"; // APPEND | REPLACE
+    public string Mode { get; init; } = CopyModes.Append;
+}
+
+public static class CopyModes
+{
+    public const string Append = "APPEND";
+    public const string Replace = "REPLACE";
 }
 
 public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermissionsCommand, int>
@@ -32,9 +38,6 @@ public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermiss
     {
         if (request.RoleId == request.SourceRoleId)
             throw new DomainRuleViolationException("ROLE_COPY_SAME_ROLE", "A role cannot copy permissions from itself.");
-
-        if (request.Mode is not ("APPEND" or "REPLACE"))
-            throw new DomainRuleViolationException("ROLE_COPY_INVALID_MODE", "Mode must be APPEND or REPLACE.");
 
         var companyId = _workspace.RequireCompanyId();
 
@@ -64,7 +67,7 @@ public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermiss
                 r.Scopes.Select(s => new AuthorityScope(s.ScopeType, s.ScopeKey)).ToList())).ToList(),
             cancellationToken);
 
-        if (request.Mode == "REPLACE")
+        if (request.Mode == CopyModes.Replace)
         {
             var existingRules = targetPrincipal.AccessRules.ToList();
             foreach (var rule in existingRules)
@@ -76,7 +79,7 @@ public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermiss
         int copied = 0;
         foreach (var sourceRule in sourceRules)
         {
-            if (request.Mode == "APPEND" && targetPrincipal.AccessRules.Any(ar => ar.PermissionId == sourceRule.PermissionId && ar.Effect == sourceRule.Effect))
+            if (request.Mode == CopyModes.Append && targetPrincipal.AccessRules.Any(ar => ar.PermissionId == sourceRule.PermissionId && ar.Effect == sourceRule.Effect))
                 continue;
 
             var newRule = new AccessRule(targetPrincipal.Id, sourceRule.PermissionId, sourceRule.Effect, sourceRule.Origin, sourceRule.ScopeMode, sourceRule.ValidFrom, sourceRule.ValidUntil);

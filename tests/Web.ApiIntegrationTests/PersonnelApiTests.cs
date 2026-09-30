@@ -65,9 +65,7 @@ public class PersonnelApiTests : ApiTestBase
             CompanyId = _companyId,
             Code = "TESTPOS",
             Title = "Test Position",
-            Description = "Test Description",
-            Kind = "Organizational",
-            HoldingId = _companyId
+            Description = "Test Description"
         };
 
         var positionResponse = await session.Client.PostAsJsonAsync("/api/v1/organization/positions", positionCommand);
@@ -223,9 +221,7 @@ public class PersonnelApiTests : ApiTestBase
             CompanyId = _companyId,
             Code = "TESTPOS",
             Title = "Test Position",
-            Description = "Test Description",
-            Kind = "Organizational",
-            HoldingId = _companyId
+            Description = "Test Description"
         };
 
         var positionResponse = await session.Client.PostAsJsonAsync("/api/v1/organization/positions", positionCommand);
@@ -279,9 +275,7 @@ public class PersonnelApiTests : ApiTestBase
             CompanyId = _companyId,
             Code = "TESTPOS",
             Title = "Test Position",
-            Description = "Test Description",
-            Kind = "Organizational",
-            HoldingId = _companyId
+            Description = "Test Description"
         };
 
         var positionResponse = await session.Client.PostAsJsonAsync("/api/v1/organization/positions", positionCommand);

@@ -15,7 +15,6 @@ public record CreateRoleCommand : IRequest<Guid>
     public string Code { get; init; } = null!;
     public string? Description { get; init; }
     public Guid? ParentRoleId { get; init; }
-    public DateTime? ValidFrom { get; init; }
     public DateTime? ValidUntil { get; init; }
     public RoleKind Kind { get; init; } = RoleKind.Standard;
     public RoleStatus Status { get; init; } = RoleStatus.Active;

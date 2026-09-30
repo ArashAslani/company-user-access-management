@@ -8,11 +8,10 @@ namespace CompanyAccessManagement.Application.Organization.Positions.Commands;
 
 public record CreatePositionCommand : IRequest<Guid>
 {
-    public string Kind { get; init; } = null!; // "Organizational" | "NonOrganizational"
-    public Guid HoldingId { get; init; }
     public Guid CompanyId { get; init; }
     public string Code { get; init; } = null!;
     public string Title { get; init; } = null!;
+    public string? Description { get; init; }
     public Guid? ParentPositionId { get; init; }
     public PositionStatus Status { get; init; } = PositionStatus.Active;
 }
@@ -58,7 +57,7 @@ public class CreatePositionCommandHandler : IRequestHandler<CreatePositionComman
         if (codeExists)
             throw new DomainRuleViolationException("POSITION_CODE_DUPLICATE", "Position code must be unique within the company.");
 
-        var position = new Position(companyId, request.Code, request.Title, null, request.ParentPositionId);
+        var position = new Position(companyId, request.Code, request.Title, request.Description, request.ParentPositionId);
         position.SetStatus(request.Status, _timeProvider.GetUtcNow().UtcDateTime);
 
         _context.Positions.Add(position);

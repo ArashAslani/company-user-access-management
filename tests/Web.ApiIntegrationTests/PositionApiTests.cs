@@ -47,9 +47,7 @@ public class PositionApiTests : ApiTestBase
             CompanyId = _companyId,
             Code = "TESTPOS",
             Title = "Test Position",
-            Description = "Test Description",
-            Kind = "Organizational",
-            HoldingId = _companyId
+            Description = "Test Description"
         };
 
         var createResponse = await session.Client.PostAsJsonAsync("/api/v1/organization/positions", createCommand);
@@ -115,9 +113,7 @@ public class PositionApiTests : ApiTestBase
             CompanyId = _companyId,
             Code = "NEWPOS",
             Title = "New Position",
-            Description = "New Position Description",
-            Kind = "Organizational",
-            HoldingId = _companyId
+            Description = "New Position Description"
         };
 
         var response = await session.Client.PostAsJsonAsync("/api/v1/organization/positions", command);
@@ -139,9 +135,7 @@ public class PositionApiTests : ApiTestBase
             CompanyId = _companyId,
             Code = "GETPOS",
             Title = "Get Position",
-            Description = "Get Desc",
-            Kind = "Organizational",
-            HoldingId = _companyId
+            Description = "Get Desc"
         };
 
         var createResponse = await session.Client.PostAsJsonAsync("/api/v1/organization/positions", createCommand);
@@ -179,9 +173,7 @@ public class PositionApiTests : ApiTestBase
             CompanyId = _companyId,
             Code = "UPDPOS",
             Title = "Update Position",
-            Description = "Update Desc",
-            Kind = "Organizational",
-            HoldingId = _companyId
+            Description = "Update Desc"
         };
 
         var createResponse = await session.Client.PostAsJsonAsync("/api/v1/organization/positions", createCommand);
@@ -196,9 +188,7 @@ public class PositionApiTests : ApiTestBase
             CompanyId = _companyId,
             Code = "UPDPOS",
             Title = "Updated Position",
-            Description = "Updated Desc",
-            Kind = "Organizational",
-            HoldingId = _companyId
+            Description = "Updated Desc"
         };
 
         var response = await session.Client.PutAsJsonAsync($"/api/v1/organization/positions/{positionId}", command);
@@ -224,9 +214,7 @@ public class PositionApiTests : ApiTestBase
             CompanyId = _companyId,
             Code = "DELPOS",
             Title = "Delete Position",
-            Description = "Delete Desc",
-            Kind = "Organizational",
-            HoldingId = _companyId
+            Description = "Delete Desc"
         };
 
         var createResponse = await session.Client.PostAsJsonAsync("/api/v1/organization/positions", createCommand);
@@ -250,9 +238,7 @@ public class PositionApiTests : ApiTestBase
             CompanyId = _companyId,
             Code = "DELPOS2",
             Title = "Delete Position 2",
-            Description = "Delete Desc",
-            Kind = "Organizational",
-            HoldingId = _companyId
+            Description = "Delete Desc"
         };
 
         var createResponse = await session.Client.PostAsJsonAsync("/api/v1/organization/positions", createCommand);
@@ -306,9 +292,7 @@ public class PositionApiTests : ApiTestBase
             CompanyId = _companyId,
             Code = "PARENT",
             Title = "Parent Position",
-            Description = "Parent",
-            Kind = "Organizational",
-            HoldingId = _companyId
+            Description = "Parent"
         };
 
         var parentResponse = await session.Client.PostAsJsonAsync("/api/v1/organization/positions", parentCommand);
@@ -323,8 +307,6 @@ public class PositionApiTests : ApiTestBase
             Code = "CHILD",
             Title = "Child Position",
             Description = "Child",
-            Kind = "Organizational",
-            HoldingId = _companyId,
             ParentPositionId = parentId
         };
 
@@ -349,9 +331,7 @@ public class PositionApiTests : ApiTestBase
             CompanyId = _companyId,
             Code = "SUMMPOS",
             Title = "Summary Position",
-            Description = "Summary Desc",
-            Kind = "Organizational",
-            HoldingId = _companyId
+            Description = "Summary Desc"
         };
 
         var createResponse = await session.Client.PostAsJsonAsync("/api/v1/organization/positions", createCommand);
@@ -441,8 +421,6 @@ public class PositionApiTests : ApiTestBase
             CompanyId = _companyId,
             Code = code,
             Title = title,
-            Kind = "Organizational",
-            HoldingId = _companyId,
             ParentPositionId = parentPositionId
         });
         response.StatusCode.ShouldBe(HttpStatusCode.Created);

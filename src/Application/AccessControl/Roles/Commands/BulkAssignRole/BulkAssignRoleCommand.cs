@@ -5,11 +5,7 @@ using CompanyAccessManagement.Domain.AccessControl;
 
 namespace CompanyAccessManagement.Application.AccessControl.Roles.Commands.BulkAssignRole;
 
-public record BulkAssignRoleCommand(
-    Guid RoleId,
-    Guid[] UserCompanyIds,
-    DateTime? ValidFrom = null,
-    DateTime? ValidUntil = null) : IRequest<BulkAssignRoleResult>;
+public record BulkAssignRoleCommand(Guid RoleId, Guid[] UserCompanyIds) : IRequest<BulkAssignRoleResult>;
 
 public record BulkAssignRoleResult(int CreatedUserRoleCount);
 
