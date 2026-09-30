@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (inherited from the template). In this repository, tests run against migrated file-backed SQLite through `WebApplicationFactory`; Aspire test hosts and Respawn are not used.
 
 ## Date
 

@@ -30,6 +30,8 @@ These rules are recorded in [ADR-0005](docs/decisions/ADR-0005-Authorization-Eva
 | Scopes (fail-closed) | `None` matches only unscoped requests, `All` matches any scope, and `Selected` matches only an exact `(type, key)` pair. |
 | Delegation | Valid only while the delegator is an active member of the same company and is still allowed the permission, not counting delegations. |
 | Super admins | `CompanySuperAdmin` applies within its company; `GlobalSuperAdmin` applies across companies. These kinds cannot be created, edited or escalated to through the API. |
+| Admin authority | Changing a role's rules (update, copy) or assigning it (bulk assign) also requires **one** of the actor's roles to be an ancestor of the target role and to hold, in its own branch, every granted permission at an equal or wider scope. Super admins bypass the check. |
+| Single application | Administration is locked to the `QC` application. Roles and resources of any other application answer 404. |
 
 `IAccessEvaluator.EvaluateAsync` returns an `AccessDecision { Allowed, ReasonCode, Sources[] }`. `Sources` is a per-request **decision trace**: it records which rule and role produced the grant. It is **not** a persisted audit log. An `AuditLog` table exists in the schema, but nothing writes to it yet.
 
@@ -42,8 +44,9 @@ Every business request carries `Authorization: Bearer <token>` and `X-Company-Id
 
 | Situation | Response |
 |---|---|
-| No or invalid token | 401 |
-| Missing permission, or an `X-Company-Id` without an active membership | 403 |
+| No or invalid token, or an inactive or deleted account at login | 401 |
+| A malformed request (missing or overlong field, bad national code, unknown enum, reversed date range, pagination out of bounds) | 400, with an `errors` map |
+| Missing permission, an `X-Company-Id` without an active membership, or an account deactivated after its token was issued | 403 |
 | A body or query `companyId` that differs from the workspace | 403 |
 | Another company's position, role, assignment or membership, referenced by id | 404 |
 | A domain rule violation (overlap, cycle, duplicate code, sealed assignment, …) | 409, with a `code` in the ProblemDetails |
@@ -101,6 +104,9 @@ The domain enforces the following rules:
 - Overlapping assignments to the same position are rejected.
 - At most one primary position per company may be effective at a time.
 - Assignments whose effective window has ended are sealed.
+- **Personnel** status follows assignments: employment is never set directly, deactivation (including `DELETE`) is a soft delete that requires no effective position, and inactive personnel cannot be assigned.
+- **Positions** with current or upcoming assignments cannot be deactivated, and inactive positions accept no assignments.
+- An account links to at most one personnel record, enforced by a filtered unique index.
 
 ## Running locally
 
@@ -165,8 +171,8 @@ All tests run the real stack: migrations applied to a temporary file-backed SQLi
 | Project | Tests | Covers |
 |---|---|---|
 | `tests/ArchitectureTests` | 3 | Layer dependency rules |
-| `tests/Infrastructure.IntegrationTests` | 78 | Evaluator semantics (Role Up/Down, DENY boundaries, prerequisites, validity, delegation, super admins, scopes), organization domain rules, forward-migration data backfills, empty-database migration and seed-twice idempotency |
-| `tests/Web.ApiIntegrationTests` | 86 | 401/403/2xx outcomes, the permission handler and CORS, tenant isolation (403/404), super-admin restrictions, role/position/personnel workflows, and the OpenAPI surface |
+| `tests/Infrastructure.IntegrationTests` | 85 | Evaluator semantics (Role Up/Down, DENY boundaries, prerequisites, validity, delegation, super admins, scopes), organization domain and lifecycle rules, forward-migration data backfills, empty-database migration and seed-twice idempotency |
+| `tests/Web.ApiIntegrationTests` | 147 | 401/403/2xx outcomes, the permission handler and CORS, tenant isolation (403/404), the QC application lock, admin authority on grant paths, account status, lifecycles, 400 contract validation, sensitive-data logging, the demo workspace, role/position/personnel workflows, and the OpenAPI surface |
 
 CI ([build.yml](.github/workflows/build.yml)) runs restore, a Release build and the full test suite on every push and pull request to `main`.
 
@@ -179,6 +185,9 @@ CI ([build.yml](.github/workflows/build.yml)) runs restore, a Release build and 
   - Workshop entities;
   - generic attachments;
   - a frontend.
+- Admin authority is enforced on grant paths only (role permission update, copy and bulk assign). Creating, editing and deleting roles is gated by the endpoint permission alone.
+- Administration covers a single application (`QC`).
+- Roles and role assignments have no effective dating; only personnel positions do.
 - The evaluator loads the company's role graph for each request, with no caching.
 - SQLite only.
 
@@ -207,6 +216,7 @@ This solution was **bootstrapped from [Jason Taylor's Clean Architecture Solutio
 
 - Removed the template's sample features (Todo, WeatherForecast, Colour), SPA frontends, packaging, test-template CI and CodeQL.
 - Renamed `CleanArchitecture.*` to `CompanyAccessManagement.*`.
+- Removed the PostgreSQL and SQL Server options; the project is SQLite only.
 - Implemented the Organization, Identity-membership and Authorization domains described above.
 
 ## License

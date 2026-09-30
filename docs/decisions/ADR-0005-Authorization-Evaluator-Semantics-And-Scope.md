@@ -80,6 +80,26 @@ Holding `Role.Permissions.Manage` or `Role.BulkAssign` is necessary but not suff
 
 Administration is locked to one application, `AccessControlApplication.Code = "QC"`. `PermissionAuthorizationHandler` evaluates permissions against it. Every role handler and the resource tree only see QC roles and resources, so any other `ApplicationId` returns **404**. The role list has no application filter.
 
+### Account status
+
+- An account is usable only when `IsActive` is true and `IsDeleted` is false.
+- `ApplicationSignInManager` refuses to issue tokens for an unusable account (**401** on `/login` and `/refresh`), and rejects the security stamp of an already-issued token.
+- `WorkspaceContextMiddleware` resolves no workspace for an unusable account, so every business endpoint answers **403** even while an old token is still unexpired.
+- At most one non-deleted account links to a given personnel record. This is enforced by a filtered unique index on `AspNetUsers.PersonnelId`.
+
+### Organization lifecycles
+
+All lifecycle rules take their time from `TimeProvider`, and a violation returns **409** with a stable `code`.
+
+- **Personnel**: employment is never set directly (`PERSONNEL_STATUS_TRANSITION_INVALID`); it follows an effective position assignment. Deactivation, including `DELETE`, is a soft delete and requires no effective position. Reactivation returns to Employed when a position is effective, otherwise to Draft. Inactive personnel cannot be assigned (`PERSONNEL_INACTIVE`).
+- **Positions**: a position with current or upcoming assignments cannot be deactivated (`POSITION_HAS_ACTIVE_ASSIGNMENTS`). Nobody can be assigned, or have an assignment reactivated, to an inactive position (`POSITION_INACTIVE`).
+- **Hierarchies**: a company, position or role cannot be its own parent or form a cycle (`HIERARCHY_CYCLE`).
+
+### Request contract
+
+- Request fields that the handlers would ignore are not part of the contract; there is no role or role-assignment effective dating.
+- FluentValidation rejects malformed requests with **400** `ValidationProblemDetails` (with an `errors` map) before a handler runs. It checks required codes and names with their column limits, a 10-digit national code, known enum values, `EffectiveTo > EffectiveFrom`, the copy mode (`APPEND` or `REPLACE`), a non-empty bulk-assign list, and pagination (`page >= 1`, `1 <= pageSize <= 100`).
+
 ### Tenant isolation
 
 - `WorkspaceContextMiddleware` accepts `X-Company-Id` only after validating an active membership, and exposes it as `ICurrentWorkspace.CompanyId`. No handler trusts a company id from the payload.

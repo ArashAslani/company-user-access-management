@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted for local orchestration only. This repository is SQLite only, so the PostgreSQL and SQL Server variants below do not apply, and tests use `WebApplicationFactory` rather than Aspire test hosts.
 
 ## Date
 
