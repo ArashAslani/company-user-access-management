@@ -42,6 +42,14 @@ public class ProblemDetailsExceptionHandler : IExceptionHandler
                 Title = "Forbidden",
                 Type = "https://tools.ietf.org/html/rfc9110#section-15.5.4"
             }),
+            ConcurrencyConflictException cce => (StatusCodes.Status409Conflict, new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Concurrency conflict",
+                Type = "https://tools.ietf.org/html/rfc9110#section-15.5.10",
+                Detail = cce.Message,
+                Extensions = { ["code"] = ConcurrencyConflictException.Code }
+            }),
             ConflictException ce => (StatusCodes.Status409Conflict, new ProblemDetails
             {
                 Status = StatusCodes.Status409Conflict,

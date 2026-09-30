@@ -18,6 +18,8 @@ public class CompanyConfiguration : IEntityTypeConfiguration<Company>
         builder.Property(c => c.Name).IsRequired().HasMaxLength(100);
         builder.Property(c => c.Description).HasMaxLength(500);
         builder.Property(c => c.Status).IsRequired().HasConversion<int>();
+        builder.Property(c => c.OrganizationRevision).IsRequired().IsConcurrencyToken();
+        builder.Property(c => c.AuthorizationRevision).IsRequired().IsConcurrencyToken();
 
         builder.HasIndex(c => c.Code).IsUnique();
         builder.HasIndex(c => c.ParentCompanyId);

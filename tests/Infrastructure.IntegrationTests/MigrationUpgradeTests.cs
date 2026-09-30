@@ -195,6 +195,26 @@ public class MigrationUpgradeTests
         await ShouldFailUnresolvedAsync();
     }
 
+    [Test]
+    public async Task OrganizationConcurrencyTokens_BackfillsDistinctTokensAndStartingRevisions()
+    {
+        var root = NewId();
+        await SeedBeforeOwnershipAsync(
+            CompanySql(root, "ROOT") + PersonnelSql(NewId(), "1000000005") + PersonnelSql(NewId(), "1000000006"));
+
+        await using var upgraded = CreateContext();
+        await upgraded.Database.MigrateAsync();
+
+        var tokens = await upgraded.Personnel.AsNoTracking().Select(p => p.ConcurrencyToken).ToListAsync();
+        tokens.Count.ShouldBe(2);
+        tokens.ShouldAllBe(t => t != Guid.Empty);
+        tokens.Distinct().Count().ShouldBe(2);
+
+        var company = await upgraded.Companies.AsNoTracking().SingleAsync();
+        company.OrganizationRevision.ShouldBe(1);
+        company.AuthorizationRevision.ShouldBe(1);
+    }
+
     private async Task ShouldFailUnresolvedAsync()
     {
         await using (var upgraded = CreateContext())

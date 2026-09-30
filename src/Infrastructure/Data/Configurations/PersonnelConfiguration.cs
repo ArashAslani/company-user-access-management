@@ -40,6 +40,10 @@ public class PersonnelConfiguration : IEntityTypeConfiguration<Personnel>
             .IsRequired()
             .HasConversion<int>();
 
+        builder.Property(p => p.ConcurrencyToken)
+            .IsRequired()
+            .IsConcurrencyToken();
+
         builder.HasOne<Company>()
             .WithMany()
             .HasForeignKey(p => p.CompanyId)

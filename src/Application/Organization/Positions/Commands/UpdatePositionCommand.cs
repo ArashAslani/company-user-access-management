@@ -42,6 +42,14 @@ public class UpdatePositionCommandHandler : IRequestHandler<UpdatePositionComman
 
         Guard.Against.NotFound(request.Id, position);
 
+        // Read the company revision before the hierarchy snapshot: a concurrent parent change commits a newer
+        // revision, so this save fails instead of both writers passing the cycle check on stale reads.
+        if (request.ParentPositionId != position.ParentPositionId)
+        {
+            var company = await _context.Companies.SingleAsync(c => c.Id == position.CompanyId, cancellationToken);
+            company.TouchOrganization();
+        }
+
         if (request.ParentPositionId.HasValue)
         {
             var parent = await _context.Positions

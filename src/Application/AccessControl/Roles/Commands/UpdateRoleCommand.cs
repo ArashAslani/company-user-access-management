@@ -44,6 +44,14 @@ public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand>
         if (role.Kind != RoleKind.Standard || request.Kind != RoleKind.Standard)
             throw new ForbiddenAccessException();
 
+        // Read the company revision before the hierarchy snapshot: a concurrent parent change commits a newer
+        // revision, so this save fails instead of both writers passing the cycle check on stale reads.
+        if (request.ParentRoleId != role.ParentRoleId)
+        {
+            var company = await _context.Companies.SingleAsync(c => c.Id == role.CompanyId, cancellationToken);
+            company.TouchAuthorization();
+        }
+
         if (request.ParentRoleId.HasValue)
         {
             var parent = await _context.Roles

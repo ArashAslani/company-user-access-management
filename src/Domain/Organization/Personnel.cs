@@ -17,6 +17,8 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
     public PersonnelStatus Status { get; private set; }
     public string? ExternalSource { get; private set; }
     public string? ExternalId { get; private set; }
+    /// <summary>Rotated by every mutation of the aggregate, so two writers holding the same stale state cannot both commit.</summary>
+    public Guid ConcurrencyToken { get; private set; }
 
     private readonly List<PersonnelPosition> _positions = [];
     public IReadOnlyCollection<PersonnelPosition> Positions => _positions.AsReadOnly();
@@ -40,10 +42,14 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         PersonnelCode = personnelCode;
         PhoneNumber = phoneNumber;
         Status = PersonnelStatus.Draft;
+        ConcurrencyToken = Guid.NewGuid();
     }
+
+    private void Touch() => ConcurrencyToken = Guid.NewGuid();
 
     public void UpdateDetails(string firstName, string lastName, string? phoneNumber, Gender gender)
     {
+        Touch();
         FirstName = firstName;
         LastName = lastName;
         PhoneNumber = phoneNumber;
@@ -56,10 +62,15 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         if (string.IsNullOrWhiteSpace(nationalCode))
             throw new DomainRuleViolationException("NATIONAL_CODE_REQUIRED", "National code is required.");
 
+        Touch();
         NationalCode = nationalCode;
     }
 
-    public void SetExternalIdentity(string? source, string? id) => (ExternalSource, ExternalId) = ExternalIdentity.Normalize(source, id);
+    public void SetExternalIdentity(string? source, string? id)
+    {
+        (ExternalSource, ExternalId) = ExternalIdentity.Normalize(source, id);
+        Touch();
+    }
 
     /// <summary>
     /// Explicit status changes. Employment is never set directly: it follows an effective position assignment or
@@ -69,6 +80,8 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
     {
         if (status == Status)
             return;
+
+        Touch();
 
         switch (status)
         {
@@ -92,6 +105,7 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         if (!CanDelete(now))
             throw TransitionInvalid("Personnel with an effective position cannot be deactivated.");
 
+        Touch();
         Status = PersonnelStatus.Inactive;
     }
 
@@ -110,6 +124,7 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
 
         var assignment = new PersonnelPosition(Id, positionId, isPrimary, effectiveFrom, effectiveTo, now);
         _positions.Add(assignment);
+        Touch();
 
         if (Status == PersonnelStatus.Draft && HasEffectivePosition(now))
             Status = PersonnelStatus.Employed;
@@ -134,6 +149,7 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         }
 
         var primaryChanged = assignment.IsPrimary != isPrimary;
+        Touch();
 
         assignment.UpdateEffectiveWindow(effectiveFrom, effectiveTo);
         assignment.SetPrimary(isPrimary);
@@ -156,6 +172,7 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
             throw new DomainRuleViolationException("ASSIGNMENT_INACTIVE", "The position assignment is already inactive.");
 
         assignment.Deactivate(now);
+        Touch();
 
         if (Status == PersonnelStatus.Employed && !HasEffectivePosition(now))
             Status = PersonnelStatus.Draft;
@@ -236,6 +253,7 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
 
         var signature = new PersonnelSignature(Id, nextVersion, mimeType, content.Length, contentHash, content, uploadedByUserId);
         _signatures.Add(signature);
+        Touch();
 
         AddDomainEvent(new PersonnelSignatureReplacedEvent(Id, signature.Id, nextVersion));
         return signature;
@@ -253,6 +271,7 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         if (!HasEffectivePosition(now))
             throw TransitionInvalid("Cannot confirm employment: no effective position assigned.");
 
+        Touch();
         Status = PersonnelStatus.Employed;
     }
 
@@ -264,6 +283,7 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         if (HasEffectivePosition(now))
             throw TransitionInvalid("Cannot revert to draft: has effective position assignments.");
 
+        Touch();
         Status = PersonnelStatus.Draft;
     }
 

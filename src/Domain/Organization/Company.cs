@@ -12,6 +12,10 @@ public sealed class Company : BaseAuditableEntity<Guid>
     public CompanyStatus Status { get; private set; }
     public string? ExternalSource { get; private set; }
     public string? ExternalId { get; private set; }
+    /// <summary>Optimistic concurrency token bumped by organization topology changes (position hierarchy).</summary>
+    public long OrganizationRevision { get; private set; } = 1;
+    /// <summary>Optimistic concurrency token and cache key part bumped by authorization topology changes (roles, role rules).</summary>
+    public long AuthorizationRevision { get; private set; } = 1;
 
     public Company? ParentCompany { get; private set; }
     private readonly List<Company> _children = [];
@@ -44,6 +48,10 @@ public sealed class Company : BaseAuditableEntity<Guid>
 
         ParentCompanyId = newParentCompanyId;
     }
+
+    public void TouchOrganization() => OrganizationRevision++;
+
+    public void TouchAuthorization() => AuthorizationRevision++;
 
     public void SetExternalIdentity(string? source, string? id) => (ExternalSource, ExternalId) = ExternalIdentity.Normalize(source, id);
 }

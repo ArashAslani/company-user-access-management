@@ -1,4 +1,5 @@
 using System.Reflection;
+using CompanyAccessManagement.Application.Common.Exceptions;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Domain.AccessControl;
 using CompanyAccessManagement.Domain.Common;
@@ -44,6 +45,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         try
         {
             return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConcurrencyConflictException(ex);
         }
         catch (DbUpdateException ex) when (IsExternalIdentityUniqueViolation(ex))
         {
