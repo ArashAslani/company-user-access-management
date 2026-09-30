@@ -71,7 +71,8 @@ public sealed class PositionEndpoints : IEndpointGroup
         .WithName("UpdatePosition")
         .Produces(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status400BadRequest)
-        .ProducesProblem(StatusCodes.Status404NotFound);
+        .ProducesProblem(StatusCodes.Status404NotFound)
+        .ProducesProblem(StatusCodes.Status409Conflict);
 
         // 1.4 Get position details
         group.MapGet("/{id:guid}", async (

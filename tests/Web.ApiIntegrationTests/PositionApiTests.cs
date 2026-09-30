@@ -369,5 +369,103 @@ public class PositionApiTests : ApiTestBase
         result.Id.ShouldBe(positionId);
     }
 
+    [Test]
+    public async Task Position_SelfParent_Denied()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Position.Read", "Organization.Position.Create", "Organization.Position.Edit");
+        var a = await CreatePositionViaApiAsync(session, "A", "Position A");
+
+        var response = await UpdatePositionParentAsync(session, a, "A", a);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ReadProblemCodeAsync(response)).ShouldBe("HIERARCHY_CYCLE");
+    }
+
+    [Test]
+    public async Task Position_CrossCompanyParent_Denied()
+    {
+        var otherCompanyId = await CreateCompanyAsync("OTHER", "Other Company");
+        var otherPositionId = await WithDbAsync(async db =>
+        {
+            var position = new Position(otherCompanyId, "OTHER", "Other");
+            db.Positions.Add(position);
+            await db.SaveChangesAsync(default);
+            return position.Id;
+        });
+
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Position.Read", "Organization.Position.Create", "Organization.Position.Edit");
+        var a = await CreatePositionViaApiAsync(session, "A", "Position A");
+
+        var response = await UpdatePositionParentAsync(session, a, "A", otherPositionId);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ReadProblemCodeAsync(response)).ShouldBe("POSITION_PARENT_COMPANY_MISMATCH");
+    }
+
+    [Test]
+    public async Task Position_A_B_C_SetAParentC_Denied()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Position.Read", "Organization.Position.Create", "Organization.Position.Edit");
+        var a = await CreatePositionViaApiAsync(session, "A", "Position A");
+        var b = await CreatePositionViaApiAsync(session, "B", "Position B", a);
+        var c = await CreatePositionViaApiAsync(session, "C", "Position C", b);
+
+        var response = await UpdatePositionParentAsync(session, a, "A", c);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ReadProblemCodeAsync(response)).ShouldBe("HIERARCHY_CYCLE");
+    }
+
+    [Test]
+    public async Task Position_LegalReparent_Allowed()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Position.Read", "Organization.Position.Create", "Organization.Position.Edit");
+        var a = await CreatePositionViaApiAsync(session, "A", "Position A");
+        var b = await CreatePositionViaApiAsync(session, "B", "Position B", a);
+        var c = await CreatePositionViaApiAsync(session, "C", "Position C");
+
+        var response = await UpdatePositionParentAsync(session, b, "B", c);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        await WithDbAsync(async db =>
+        {
+            var updated = await db.Positions.AsNoTracking().SingleAsync(p => p.Id == b);
+            updated.ParentPositionId.ShouldBe(c);
+        });
+    }
+
+    private async Task<Guid> CreatePositionViaApiAsync(AuthSession session, string code, string title, Guid? parentPositionId = null)
+    {
+        var response = await session.Client.PostAsJsonAsync("/api/v1/organization/positions", new
+        {
+            CompanyId = _companyId,
+            Code = code,
+            Title = title,
+            Kind = "Organizational",
+            HoldingId = _companyId,
+            ParentPositionId = parentPositionId
+        });
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        return (await response.Content.ReadFromJsonAsync<CreatePositionResponse>())!.Id;
+    }
+
+    private Task<HttpResponseMessage> UpdatePositionParentAsync(AuthSession session, Guid id, string code, Guid? parentPositionId)
+        => session.Client.PutAsJsonAsync($"/api/v1/organization/positions/{id}", new
+        {
+            Code = code,
+            Title = code,
+            ParentPositionId = parentPositionId,
+            Status = PositionStatus.Active
+        });
+
+    private static async Task<string?> ReadProblemCodeAsync(HttpResponseMessage response)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return doc.RootElement.TryGetProperty("code", out var code) ? code.GetString()
+            : doc.RootElement.TryGetProperty("extensions", out var ext) && ext.TryGetProperty("code", out var nested)
+                ? nested.GetString()
+                : null;
+    }
+
     private record CreatePositionResponse(Guid Id);
 }

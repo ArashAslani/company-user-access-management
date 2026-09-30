@@ -29,7 +29,11 @@ public class ApplicationDbContextInitialiser
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<IdentityRole<Guid>> _roleManager;
 
-    public ApplicationDbContextInitialiser(ILogger<ApplicationDbContextInitialiser> logger, ApplicationDbContext context, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole<Guid>> roleManager)
+    public ApplicationDbContextInitialiser(
+        ILogger<ApplicationDbContextInitialiser> logger,
+        ApplicationDbContext context,
+        UserManager<ApplicationUser> userManager,
+        RoleManager<IdentityRole<Guid>> roleManager)
     {
         _logger = logger;
         _context = context;
@@ -41,7 +45,6 @@ public class ApplicationDbContextInitialiser
     {
         try
         {
-            // Use migrations instead of EnsureDeleted/EnsureCreated
             await _context.Database.MigrateAsync();
         }
         catch (Exception ex)
@@ -66,125 +69,156 @@ public class ApplicationDbContextInitialiser
 
     public async Task TrySeedAsync()
     {
-        // Default Identity roles (for authentication only, not business roles)
+        await SeedIdentityAsync();
+        await SeedQcCatalogueAsync();
+    }
+
+    private async Task SeedIdentityAsync()
+    {
         var administratorRole = new IdentityRole<Guid>(Roles.Administrator);
 
         if (_roleManager.Roles.All(r => r.Name != administratorRole.Name))
-        {
             await _roleManager.CreateAsync(administratorRole);
-        }
 
-        // Default users
-        var administrator = new ApplicationUser { UserName = "administrator@localhost", Email = "administrator@localhost", IsActive = true };
+        var administrator = new ApplicationUser
+        {
+            UserName = "administrator@localhost",
+            Email = "administrator@localhost",
+            IsActive = true
+        };
 
         if (_userManager.Users.All(u => u.UserName != administrator.UserName))
         {
             await _userManager.CreateAsync(administrator, "Administrator1!");
             if (!string.IsNullOrWhiteSpace(administratorRole.Name))
-            {
-                await _userManager.AddToRolesAsync(administrator, new[] { administratorRole.Name });
-            }
+                await _userManager.AddToRolesAsync(administrator, [administratorRole.Name]);
+        }
+    }
+
+    /// <summary>
+    /// Find-or-create the QC application catalogue (resources, permissions, implications). Safe to call repeatedly.
+    /// </summary>
+    private async Task SeedQcCatalogueAsync()
+    {
+        var qcApp = await _context.Applications
+            .Include(a => a.Resources)
+                .ThenInclude(r => r.Permissions)
+                    .ThenInclude(p => p.Implications)
+            .FirstOrDefaultAsync(a => a.Code == "QC");
+
+        if (qcApp is null)
+        {
+            qcApp = new Domain.AccessControl.Application("QC", "Quality Control", "Quality Control Application");
+            _context.Applications.Add(qcApp);
+        }
+        else
+        {
+            qcApp.UpdateDetails("Quality Control", "Quality Control Application", isActive: true);
         }
 
-        // Seed QC Application
-        var qcApp = new CompanyAccessManagement.Domain.AccessControl.Application("QC", "Quality Control", "Quality Control Application");
-        _context.Applications.Add(qcApp);
+        var products = EnsureResource(qcApp, "Products", "Products", "Product management");
+        EnsurePermission(products, "Read", "Read products");
+        EnsurePermission(products, "Edit", "Edit products");
+        EnsurePermission(products, "Delete", "Delete products");
 
-        // Seed Resources and Permissions for QC
-        var productsResource = qcApp.AddResource("Products", "Products", "Product management");
-        productsResource.AddPermission("Read", "Read products");
-        productsResource.AddPermission("Edit", "Edit products");
-        productsResource.AddPermission("Delete", "Delete products");
+        var laboratory = EnsureResource(qcApp, "Laboratory", "Laboratory", "Laboratory management");
+        EnsurePermission(laboratory, "Read", "Read laboratory data");
+        EnsurePermission(laboratory, "Approve", "Approve laboratory results");
 
-        var laboratoryResource = qcApp.AddResource("Laboratory", "Laboratory", "Laboratory management");
-        laboratoryResource.AddPermission("Read", "Read laboratory data");
-        laboratoryResource.AddPermission("Approve", "Approve laboratory results");
+        var ncr = EnsureResource(qcApp, "NCR", "Non-Conformance Reports", "NCR management");
+        EnsurePermission(ncr, "Read", "Read NCRs");
+        EnsurePermission(ncr, "Approve", "Approve NCRs");
 
-        var ncrResource = qcApp.AddResource("NCR", "Non-Conformance Reports", "NCR management");
-        ncrResource.AddPermission("Read", "Read NCRs");
-        ncrResource.AddPermission("Approve", "Approve NCRs");
+        var organization = EnsureResource(qcApp, "Organization", "Organization", "Organization management");
+        EnsurePermission(organization, "Personnel.Read", "Read personnel");
+        EnsurePermission(organization, "Personnel.Create", "Create personnel");
+        EnsurePermission(organization, "Personnel.Edit", "Edit personnel");
+        EnsurePermission(organization, "Personnel.Delete", "Delete personnel");
+        EnsurePermission(organization, "PersonnelPosition.Create", "Create personnel position assignment");
+        EnsurePermission(organization, "PersonnelPosition.Edit", "Edit personnel position assignment");
+        EnsurePermission(organization, "PersonnelPosition.Delete", "Delete personnel position assignment");
+        EnsurePermission(organization, "PersonnelSignature.Create", "Create personnel signature");
+        EnsurePermission(organization, "Position.Read", "Read positions");
+        EnsurePermission(organization, "Position.Create", "Create positions");
+        EnsurePermission(organization, "Position.Edit", "Edit positions");
+        EnsurePermission(organization, "Position.Delete", "Delete positions");
+        EnsurePermission(organization, "Chart.Read", "Read org chart");
 
-        var organizationResource = qcApp.AddResource("Organization", "Organization", "Organization management");
-        organizationResource.AddPermission("Personnel.Read", "Read personnel");
-        organizationResource.AddPermission("Personnel.Create", "Create personnel");
-        organizationResource.AddPermission("Personnel.Edit", "Edit personnel");
-        organizationResource.AddPermission("Personnel.Delete", "Delete personnel");
-        organizationResource.AddPermission("PersonnelPosition.Create", "Create personnel position assignment");
-        organizationResource.AddPermission("PersonnelPosition.Edit", "Edit personnel position assignment");
-        organizationResource.AddPermission("PersonnelPosition.Delete", "Delete personnel position assignment");
-        organizationResource.AddPermission("PersonnelSignature.Create", "Create personnel signature");
-        organizationResource.AddPermission("Position.Read", "Read positions");
-        organizationResource.AddPermission("Position.Create", "Create positions");
-        organizationResource.AddPermission("Position.Edit", "Edit positions");
-        organizationResource.AddPermission("Position.Delete", "Delete positions");
-        organizationResource.AddPermission("Chart.Read", "Read org chart");
+        var accessMgmt = EnsureResource(qcApp, "AccessManagement", "Access Management", "Access control management");
+        EnsurePermission(accessMgmt, "Role.Read", "Read roles");
+        EnsurePermission(accessMgmt, "Role.Create", "Create roles");
+        EnsurePermission(accessMgmt, "Role.Edit", "Edit roles");
+        EnsurePermission(accessMgmt, "Role.Delete", "Delete roles");
+        EnsurePermission(accessMgmt, "Role.Permissions.Manage", "Manage role permissions");
+        EnsurePermission(accessMgmt, "Role.BulkAssign", "Bulk assign roles");
+        EnsurePermission(accessMgmt, "Permission.Assign", "Assign permissions");
+        EnsurePermission(accessMgmt, "AuditLog.Read", "Read audit logs");
+        EnsurePermission(accessMgmt, "AuditLog.Export", "Export audit logs");
+        EnsurePermission(accessMgmt, "RuleScope.Read", "Read rule scopes");
+        EnsurePermission(accessMgmt, "Resource.Read", "Read resources");
 
-        var accessMgmtResource = qcApp.AddResource("AccessManagement", "Access Management", "Access control management");
-        accessMgmtResource.AddPermission("Role.Read", "Read roles");
-        accessMgmtResource.AddPermission("Role.Create", "Create roles");
-        accessMgmtResource.AddPermission("Role.Edit", "Edit roles");
-        accessMgmtResource.AddPermission("Role.Delete", "Delete roles");
-        accessMgmtResource.AddPermission("Role.Permissions.Manage", "Manage role permissions");
-        accessMgmtResource.AddPermission("Role.BulkAssign", "Bulk assign roles");
-        accessMgmtResource.AddPermission("Permission.Assign", "Assign permissions");
-        accessMgmtResource.AddPermission("AuditLog.Read", "Read audit logs");
-        accessMgmtResource.AddPermission("AuditLog.Export", "Export audit logs");
-        accessMgmtResource.AddPermission("RuleScope.Read", "Read rule scopes");
-        accessMgmtResource.AddPermission("Resource.Read", "Read resources");
+        var attachments = EnsureResource(qcApp, "Attachments", "Attachments", "Attachment management");
+        EnsurePermission(attachments, "Attachment.Create", "Create attachments");
+        EnsurePermission(attachments, "Attachment.Read", "Read attachments");
+        EnsurePermission(attachments, "Attachment.Delete", "Delete attachments");
 
-        var attachmentsResource = qcApp.AddResource("Attachments", "Attachments", "Attachment management");
-        attachmentsResource.AddPermission("Attachment.Create", "Create attachments");
-        attachmentsResource.AddPermission("Attachment.Read", "Read attachments");
-        attachmentsResource.AddPermission("Attachment.Delete", "Delete attachments");
+        // Persist new resources/permissions so implication targets have stable ids.
+        await _context.SaveChangesAsync();
 
-        // Helper method to safely add implication if permission exists
-        var safeAddImplication = (Resource resource, string fromAction, string toAction) =>
-        {
-            var fromPerm = resource.Permissions.FirstOrDefault(p => p.ActionCode == fromAction);
-            var toPerm = resource.Permissions.FirstOrDefault(p => p.ActionCode == toAction);
-            if (fromPerm != null && toPerm != null)
-            {
-                fromPerm.AddImplication(toPerm.Id);
-            }
-        };
-
-        // Edit => Read implications
-        safeAddImplication(productsResource, "Edit", "Read");
-        safeAddImplication(laboratoryResource, "Approve", "Read");
-        safeAddImplication(ncrResource, "Approve", "Read");
-
-        // Personnel
-        safeAddImplication(organizationResource, "Personnel.Edit", "Personnel.Read");
-        safeAddImplication(organizationResource, "Personnel.Delete", "Personnel.Read");
-
-        // Position
-        safeAddImplication(organizationResource, "Position.Edit", "Position.Read");
-        safeAddImplication(organizationResource, "Position.Delete", "Position.Read");
-
-        // PersonnelPosition
-        safeAddImplication(organizationResource, "PersonnelPosition.Edit", "PersonnelPosition.Create");
-        safeAddImplication(organizationResource, "PersonnelPosition.Delete", "PersonnelPosition.Create");
-
-        // AuditLog
-        safeAddImplication(accessMgmtResource, "AuditLog.Export", "AuditLog.Read");
-
-        // Role
-        safeAddImplication(accessMgmtResource, "Role.Permissions.Manage", "Role.Read");
-        safeAddImplication(accessMgmtResource, "Role.BulkAssign", "Role.Read");
-        safeAddImplication(accessMgmtResource, "Role.Create", "Role.Read");
-        safeAddImplication(accessMgmtResource, "Role.Edit", "Role.Read");
-        safeAddImplication(accessMgmtResource, "Role.Delete", "Role.Read");
-
-        // Permission
-        safeAddImplication(accessMgmtResource, "Permission.Assign", "Role.Read");
-
-        // Attachment
-        safeAddImplication(attachmentsResource, "Attachment.Delete", "Attachment.Create");
-        safeAddImplication(attachmentsResource, "Attachment.Read", "Attachment.Create");
-
-        // RuleScope
-        safeAddImplication(accessMgmtResource, "RuleScope.Read", "Resource.Read");
+        EnsureImplication(products, "Edit", "Read");
+        EnsureImplication(laboratory, "Approve", "Read");
+        EnsureImplication(ncr, "Approve", "Read");
+        EnsureImplication(organization, "Personnel.Edit", "Personnel.Read");
+        EnsureImplication(organization, "Personnel.Delete", "Personnel.Read");
+        EnsureImplication(organization, "Position.Edit", "Position.Read");
+        EnsureImplication(organization, "Position.Delete", "Position.Read");
+        EnsureImplication(organization, "PersonnelPosition.Edit", "PersonnelPosition.Create");
+        EnsureImplication(organization, "PersonnelPosition.Delete", "PersonnelPosition.Create");
+        EnsureImplication(accessMgmt, "AuditLog.Export", "AuditLog.Read");
+        EnsureImplication(accessMgmt, "Role.Permissions.Manage", "Role.Read");
+        EnsureImplication(accessMgmt, "Role.BulkAssign", "Role.Read");
+        EnsureImplication(accessMgmt, "Role.Create", "Role.Read");
+        EnsureImplication(accessMgmt, "Role.Edit", "Role.Read");
+        EnsureImplication(accessMgmt, "Role.Delete", "Role.Read");
+        EnsureImplication(accessMgmt, "Permission.Assign", "Role.Read");
+        EnsureImplication(attachments, "Attachment.Delete", "Attachment.Create");
+        EnsureImplication(attachments, "Attachment.Read", "Attachment.Create");
+        EnsureImplication(accessMgmt, "RuleScope.Read", "Resource.Read");
 
         await _context.SaveChangesAsync();
+    }
+
+    private static Resource EnsureResource(Domain.AccessControl.Application application, string code, string name, string? description)
+    {
+        var existing = application.Resources.FirstOrDefault(r => r.Code == code);
+        if (existing is not null)
+        {
+            existing.UpdateDetails(code, name, description, existing.SortOrder);
+            return existing;
+        }
+
+        return application.AddResource(code, name, description);
+    }
+
+    private static Permission EnsurePermission(Resource resource, string actionCode, string description)
+    {
+        var existing = resource.Permissions.FirstOrDefault(p => p.ActionCode == actionCode);
+        if (existing is not null)
+        {
+            existing.UpdateDetails(actionCode, description);
+            return existing;
+        }
+
+        return resource.AddPermission(actionCode, description);
+    }
+
+    private static void EnsureImplication(Resource resource, string fromAction, string toAction)
+    {
+        var from = resource.Permissions.FirstOrDefault(p => p.ActionCode == fromAction);
+        var to = resource.Permissions.FirstOrDefault(p => p.ActionCode == toAction);
+        if (from is null || to is null)
+            return;
+
+        from.AddImplication(to.Id);
     }
 }

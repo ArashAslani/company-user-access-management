@@ -371,7 +371,95 @@ public class RoleApiTests : ApiTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
     }
 
-    private async Task<Guid> CreateRoleViaApiAsync(AuthSession session, string code)
+    [Test]
+    public async Task Role_SelfParent_Denied()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Create", "AccessManagement.Role.Edit");
+        var a = await CreateRoleViaApiAsync(session, "A");
+
+        var response = await UpdateRoleParentAsync(session, a, "A", a);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ReadProblemCodeAsync(response)).ShouldBe("HIERARCHY_CYCLE");
+    }
+
+    [Test]
+    public async Task Role_CrossCompanyParent_Denied()
+    {
+        var otherCompanyId = await CreateCompanyAsync("OTHER", "Other Company");
+        var otherRoleId = await WithDbAsync(async db =>
+        {
+            var role = new Role(otherCompanyId, _appId, "OTHER", "Other");
+            db.BusinessRoles.Add(role);
+            db.AuthPrincipals.Add(AuthPrincipal.ForRole(role.Id, otherCompanyId, _appId));
+            await db.SaveChangesAsync(default);
+            return role.Id;
+        });
+
+        var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Create", "AccessManagement.Role.Edit");
+        var a = await CreateRoleViaApiAsync(session, "A");
+
+        var response = await UpdateRoleParentAsync(session, a, "A", otherRoleId);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ReadProblemCodeAsync(response)).ShouldBe("ROLE_PARENT_COMPANY_MISMATCH");
+    }
+
+    [Test]
+    public async Task Role_CrossApplicationParent_Denied()
+    {
+        var otherAppId = await CreateApplicationAsync("OTHERAPP", "Other App");
+        var otherRoleId = await WithDbAsync(async db =>
+        {
+            var role = new Role(_companyId, otherAppId, "OTHER", "Other");
+            db.BusinessRoles.Add(role);
+            db.AuthPrincipals.Add(AuthPrincipal.ForRole(role.Id, _companyId, otherAppId));
+            await db.SaveChangesAsync(default);
+            return role.Id;
+        });
+
+        var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Create", "AccessManagement.Role.Edit");
+        var a = await CreateRoleViaApiAsync(session, "A");
+
+        var response = await UpdateRoleParentAsync(session, a, "A", otherRoleId);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ReadProblemCodeAsync(response)).ShouldBe("ROLE_PARENT_APPLICATION_MISMATCH");
+    }
+
+    [Test]
+    public async Task Role_A_B_C_SetAParentC_Denied()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Create", "AccessManagement.Role.Edit");
+        var a = await CreateRoleViaApiAsync(session, "A");
+        var b = await CreateRoleViaApiAsync(session, "B", a);
+        var c = await CreateRoleViaApiAsync(session, "C", b);
+
+        var response = await UpdateRoleParentAsync(session, a, "A", c);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ReadProblemCodeAsync(response)).ShouldBe("HIERARCHY_CYCLE");
+    }
+
+    [Test]
+    public async Task Role_LegalReparent_Allowed()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Create", "AccessManagement.Role.Edit");
+        var a = await CreateRoleViaApiAsync(session, "A");
+        var b = await CreateRoleViaApiAsync(session, "B", a);
+        var c = await CreateRoleViaApiAsync(session, "C");
+
+        var response = await UpdateRoleParentAsync(session, b, "B", c);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        await WithDbAsync(async db =>
+        {
+            var updated = await db.BusinessRoles.AsNoTracking().SingleAsync(r => r.Id == b);
+            updated.ParentRoleId.ShouldBe(c);
+        });
+    }
+
+    private async Task<Guid> CreateRoleViaApiAsync(AuthSession session, string code, Guid? parentRoleId = null)
     {
         var response = await session.Client.PostAsJsonAsync("/api/v1/access-control/roles", new
         {
@@ -379,11 +467,22 @@ public class RoleApiTests : ApiTestBase
             ApplicationId = _appId,
             Code = code,
             Name = code,
-            Kind = RoleKind.Standard
+            Kind = RoleKind.Standard,
+            ParentRoleId = parentRoleId
         });
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
         return (await response.Content.ReadFromJsonAsync<CreateRoleResponse>())!.Id;
     }
+
+    private Task<HttpResponseMessage> UpdateRoleParentAsync(AuthSession session, Guid id, string code, Guid? parentRoleId)
+        => session.Client.PutAsJsonAsync($"/api/v1/access-control/roles/{id}", new
+        {
+            Name = code,
+            Code = code,
+            Kind = RoleKind.Standard,
+            ParentRoleId = parentRoleId,
+            Status = RoleStatus.Active
+        });
 
     private Task<Guid> GetProductsResourceIdAsync()
         => WithDbAsync(db => db.Resources.Where(r => r.ApplicationId == _appId && r.Code == "Products").Select(r => r.Id).SingleAsync());
@@ -406,6 +505,15 @@ public class RoleApiTests : ApiTestBase
                 }
             }
         };
+
+    private static async Task<string?> ReadProblemCodeAsync(HttpResponseMessage response)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return doc.RootElement.TryGetProperty("code", out var code) ? code.GetString()
+            : doc.RootElement.TryGetProperty("extensions", out var ext) && ext.TryGetProperty("code", out var nested)
+                ? nested.GetString()
+                : null;
+    }
 
     private record CreateRoleResponse(Guid Id);
 

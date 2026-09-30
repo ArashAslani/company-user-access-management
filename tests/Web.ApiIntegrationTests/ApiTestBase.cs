@@ -152,6 +152,7 @@ public abstract class ApiTestBase
         {
             var role = new Role(companyId, applicationId, code, name, kind, parentRoleId);
             db.BusinessRoles.Add(role);
+            db.AuthPrincipals.Add(AuthPrincipal.ForRole(role.Id, companyId, applicationId));
             await db.SaveChangesAsync(default);
             return role.Id;
         });

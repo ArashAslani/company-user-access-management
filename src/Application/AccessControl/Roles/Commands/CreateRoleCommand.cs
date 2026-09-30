@@ -1,7 +1,7 @@
+using CompanyAccessManagement.Application.Common.Hierarchy;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Domain.AccessControl;
-using MediatR;
-using Microsoft.EntityFrameworkCore;
+using CompanyAccessManagement.Domain.Common;
 
 namespace CompanyAccessManagement.Application.AccessControl.Roles.Commands;
 
@@ -31,35 +31,38 @@ public class CreateRoleCommandHandler : IRequestHandler<CreateRoleCommand, Guid>
 
     public async Task<Guid> Handle(CreateRoleCommand request, CancellationToken cancellationToken)
     {
-        // Validate parent role belongs to same company and application
         if (request.ParentRoleId.HasValue)
         {
             var parent = await _context.Roles
                 .FirstOrDefaultAsync(r => r.Id == request.ParentRoleId.Value, cancellationToken);
 
-            if (parent == null)
-                throw new InvalidOperationException("Parent role not found.");
+            Guard.Against.NotFound(request.ParentRoleId.Value, parent);
 
             if (parent.CompanyId != request.CompanyId)
-                throw new InvalidOperationException("Parent role must belong to the same company.");
+                throw new DomainRuleViolationException("ROLE_PARENT_COMPANY_MISMATCH", "Parent role must belong to the same company.");
 
             if (parent.ApplicationId != request.ApplicationId)
-                throw new InvalidOperationException("Parent role must belong to the same application.");
+                throw new DomainRuleViolationException("ROLE_PARENT_APPLICATION_MISMATCH", "Parent role must belong to the same application.");
 
-            // Cycle check
-            if (await WouldCreateCycle(request.ParentRoleId.Value, request.CompanyId, request.ApplicationId, cancellationToken))
-                throw new InvalidOperationException("Role hierarchy cycle detected.");
+            // Detect an existing cycle on the proposed parent chain (new node has no id in the graph yet).
+            await HierarchyCycle.EnsureAcyclicAsync(
+                Guid.Empty,
+                request.ParentRoleId,
+                async (id, ct) => await _context.Roles
+                    .Where(r => r.Id == id && r.CompanyId == request.CompanyId && r.ApplicationId == request.ApplicationId)
+                    .Select(r => r.ParentRoleId)
+                    .FirstOrDefaultAsync(ct),
+                cancellationToken,
+                "Role");
         }
 
-        // Check unique code per company+application
         var codeExists = await _context.Roles
             .AnyAsync(r => r.CompanyId == request.CompanyId && r.ApplicationId == request.ApplicationId && r.Code == request.Code, cancellationToken);
 
         if (codeExists)
-            throw new InvalidOperationException("Role code must be unique within the company and application.");
+            throw new DomainRuleViolationException("ROLE_CODE_DUPLICATE", "Role code must be unique within the company and application.");
 
         var role = new Role(request.CompanyId, request.ApplicationId, request.Code, request.Name, request.Kind, request.ParentRoleId, request.ValidUntil);
-
         role.SetStatus(request.Status);
 
         _context.Roles.Add(role);
@@ -67,29 +70,5 @@ public class CreateRoleCommandHandler : IRequestHandler<CreateRoleCommand, Guid>
         await _context.SaveChangesAsync(cancellationToken);
 
         return role.Id;
-    }
-
-    private async Task<bool> WouldCreateCycle(Guid parentId, Guid companyId, Guid applicationId, CancellationToken cancellationToken)
-    {
-        var visited = new HashSet<Guid>();
-        var current = parentId;
-
-        while (current != Guid.Empty)
-        {
-            if (visited.Contains(current))
-                return true;
-
-            visited.Add(current);
-
-            var role = await _context.Roles
-                .FirstOrDefaultAsync(r => r.Id == current, cancellationToken);
-
-            if (role == null || role.CompanyId != companyId || role.ApplicationId != applicationId)
-                break;
-
-            current = role.ParentRoleId ?? Guid.Empty;
-        }
-
-        return false;
     }
 }
