@@ -17,11 +17,13 @@ public class BulkAssignRoleCommandHandler : IRequestHandler<BulkAssignRoleComman
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
+    private readonly IAdminAuthority _adminAuthority;
 
-    public BulkAssignRoleCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
+    public BulkAssignRoleCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, IAdminAuthority adminAuthority)
     {
         _context = context;
         _workspace = workspace;
+        _adminAuthority = adminAuthority;
     }
 
     public async Task<BulkAssignRoleResult> Handle(BulkAssignRoleCommand request, CancellationToken cancellationToken)
@@ -36,6 +38,8 @@ public class BulkAssignRoleCommandHandler : IRequestHandler<BulkAssignRoleComman
 
         if (role.Kind != RoleKind.Standard)
             throw new ForbiddenAccessException();
+
+        await _adminAuthority.EnsureCanAssignAsync(role.Id, cancellationToken);
 
         var requestedIds = request.UserCompanyIds.Distinct().ToArray();
 

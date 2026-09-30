@@ -47,7 +47,7 @@ public class AccessEvaluator : IAccessEvaluator
         if (permissionId is null)
             return Denied("DENIED_PERMISSION_NOT_FOUND");
 
-        var globalSuperAdminRoleId = await FindGlobalSuperAdminRoleAsync(request.UserId, now, cancellationToken);
+        var globalSuperAdminRoleId = await FindGlobalSuperAdminRoleAsync(_context, request.UserId, now, cancellationToken);
         if (globalSuperAdminRoleId is not null)
             return new AccessDecision(true, "ALLOWED_GLOBAL_SUPER_ADMIN", [new AccessSource("GlobalSuperAdmin", globalSuperAdminRoleId.Value.ToString(), "All")]);
 
@@ -72,12 +72,12 @@ public class AccessEvaluator : IAccessEvaluator
             throw new ForbiddenAccessException();
     }
 
-    private async Task<Guid?> FindGlobalSuperAdminRoleAsync(Guid userId, DateTime now, CancellationToken cancellationToken)
+    internal static async Task<Guid?> FindGlobalSuperAdminRoleAsync(IApplicationDbContext context, Guid userId, DateTime now, CancellationToken cancellationToken)
     {
-        return await (from uc in _context.UserCompanies
+        return await (from uc in context.UserCompanies
                       where uc.UserId == userId && uc.Status == UserCompanyStatus.Active
                       from ur in uc.Roles
-                      join r in _context.Roles on ur.RoleId equals r.Id
+                      join r in context.Roles on ur.RoleId equals r.Id
                       where r.Kind == RoleKind.GlobalSuperAdmin && r.Status == RoleStatus.Active
                           && (r.ValidUntil == null || r.ValidUntil > now)
                       select (Guid?)r.Id).FirstOrDefaultAsync(cancellationToken);
@@ -85,9 +85,11 @@ public class AccessEvaluator : IAccessEvaluator
 
     private static AccessDecision Denied(string reasonCode) => new(false, reasonCode, []);
 
-    private sealed record Subject(Guid UserId, Guid PrincipalId, IReadOnlyCollection<Guid> RoleIds);
+    /// <param name="ManagingRoleId">When set, only this directly held role's branch may grant (single-role admin authority);
+    /// the user's direct DENY rules still apply.</param>
+    internal sealed record Subject(Guid UserId, Guid PrincipalId, IReadOnlyCollection<Guid> RoleIds, Guid? ManagingRoleId = null);
 
-    private sealed record Outcome(bool Allowed, string ReasonCode, IReadOnlyCollection<AccessSource> Sources)
+    internal sealed record Outcome(bool Allowed, string ReasonCode, IReadOnlyCollection<AccessSource> Sources)
     {
         public static Outcome Deny(string reasonCode) => new(false, reasonCode, []);
     }
@@ -96,11 +98,12 @@ public class AccessEvaluator : IAccessEvaluator
     /// Holds everything loaded for one request: the role graph, role principals, the prerequisite graph and the
     /// active, time-valid rules for the permission and its prerequisites. Results are cached per subject and permission.
     /// </summary>
-    private sealed class EvaluationSession
+    internal sealed class EvaluationSession
     {
         private readonly IApplicationDbContext _context;
         private readonly AccessRequest _request;
         private readonly DateTime _now;
+        private readonly bool _requireAllScope;
         private readonly RoleGraph _roles;
         private readonly Dictionary<Guid, Guid> _roleIdByPrincipal;
         private readonly ILookup<Guid, Guid> _principalsByRole;
@@ -108,12 +111,13 @@ public class AccessEvaluator : IAccessEvaluator
         private readonly HashSet<Guid> _relevantPermissions;
         private readonly ILookup<Guid, AccessRule> _roleRulesByPrincipal;
         private readonly Dictionary<Guid, List<AccessRule>> _subjectRules = [];
-        private readonly Dictionary<(Guid PrincipalId, Guid PermissionId, bool ExcludeDelegation), Outcome> _outcomes = [];
+        private readonly Dictionary<(Guid PrincipalId, Guid? ManagingRoleId, Guid PermissionId, bool ExcludeDelegation), Outcome> _outcomes = [];
 
         private EvaluationSession(
             IApplicationDbContext context,
             AccessRequest request,
             DateTime now,
+            bool requireAllScope,
             RoleGraph roles,
             Dictionary<Guid, Guid> roleIdByPrincipal,
             ILookup<Guid, Guid> directPrerequisites,
@@ -123,6 +127,7 @@ public class AccessEvaluator : IAccessEvaluator
             _context = context;
             _request = request;
             _now = now;
+            _requireAllScope = requireAllScope;
             _roles = roles;
             _roleIdByPrincipal = roleIdByPrincipal;
             _principalsByRole = roleIdByPrincipal.ToLookup(p => p.Value, p => p.Key);
@@ -131,8 +136,11 @@ public class AccessEvaluator : IAccessEvaluator
             _roleRulesByPrincipal = roleRules.ToLookup(r => r.PrincipalId);
         }
 
+        /// <param name="requireAllScope">Only ScopeMode.All ALLOW rules match and any DENY rule matches: used to decide whether a
+        /// branch holds a permission over every scope.</param>
         public static async Task<EvaluationSession> CreateAsync(
-            IApplicationDbContext context, AccessRequest request, Guid applicationId, Guid permissionId, DateTime now, CancellationToken cancellationToken)
+            IApplicationDbContext context, AccessRequest request, Guid applicationId, Guid permissionId, DateTime now, CancellationToken cancellationToken,
+            bool requireAllScope = false)
         {
             var roles = await context.Roles
                 .AsNoTracking()
@@ -163,7 +171,7 @@ public class AccessEvaluator : IAccessEvaluator
                 .ToListAsync(cancellationToken);
 
             return new EvaluationSession(
-                context, request, now, new RoleGraph(roles), roleIdByPrincipal, directPrerequisites, relevantPermissions, roleRules);
+                context, request, now, requireAllScope, new RoleGraph(roles), roleIdByPrincipal, directPrerequisites, relevantPermissions, roleRules);
         }
 
         public async Task<Subject?> LoadSubjectAsync(Guid userId, CancellationToken cancellationToken)
@@ -189,12 +197,26 @@ public class AccessEvaluator : IAccessEvaluator
             return null;
         }
 
+        /// <summary>Directly held, grantable standard roles of which <paramref name="targetRoleId"/> is a strict descendant.</summary>
+        public IEnumerable<Guid> ManagingRolesFor(Subject subject, Guid targetRoleId)
+        {
+            foreach (var roleId in subject.RoleIds.Distinct())
+            {
+                if (roleId != targetRoleId
+                    && _roles.TryGet(roleId, out var role)
+                    && role.Kind == RoleKind.Standard
+                    && CanGrant(role)
+                    && _roles.SelfAndDescendants(roleId).Contains(targetRoleId))
+                    yield return roleId;
+            }
+        }
+
         public Task<Outcome> EvaluateAsync(Subject subject, Guid permissionId, bool excludeDelegation, CancellationToken cancellationToken)
             => EvaluateAsync(subject, permissionId, excludeDelegation, [], cancellationToken);
 
         private async Task<Outcome> EvaluateAsync(Subject subject, Guid permissionId, bool excludeDelegation, HashSet<Guid> inProgress, CancellationToken cancellationToken)
         {
-            var key = (subject.PrincipalId, permissionId, excludeDelegation);
+            var key = (subject.PrincipalId, subject.ManagingRoleId, permissionId, excludeDelegation);
             if (_outcomes.TryGetValue(key, out var cached))
                 return cached;
 
@@ -228,10 +250,16 @@ public class AccessEvaluator : IAccessEvaluator
 
             var candidates = new List<RuleCandidate>();
 
-            foreach (var rule in directRules.Where(r => IsAllowFor(r, permissionId) && r.Origin != AccessRuleOrigin.Delegated))
-                candidates.Add(new RuleCandidate(rule, CandidateSource.DirectUser, null, null, new HashSet<Guid>()));
+            var managing = subject.ManagingRoleId is not null;
 
-            foreach (var branchRoleId in subject.RoleIds.Where(id => _roles.TryGet(id, out var branch) && CanGrant(branch)))
+            if (!managing)
+            {
+                foreach (var rule in directRules.Where(r => IsAllowFor(r, permissionId) && r.Origin != AccessRuleOrigin.Delegated))
+                    candidates.Add(new RuleCandidate(rule, CandidateSource.DirectUser, null, null, new HashSet<Guid>()));
+            }
+
+            IEnumerable<Guid> branchRoleIds = managing ? [subject.ManagingRoleId!.Value] : subject.RoleIds;
+            foreach (var branchRoleId in branchRoleIds.Where(id => _roles.TryGet(id, out var branch) && CanGrant(branch)))
             {
                 var ancestors = _roles.Ancestors(branchRoleId);
 
@@ -253,7 +281,7 @@ public class AccessEvaluator : IAccessEvaluator
                 }
             }
 
-            if (!excludeDelegation)
+            if (!excludeDelegation && !managing)
             {
                 foreach (var rule in directRules.Where(r => IsAllowFor(r, permissionId) && r.Origin == AccessRuleOrigin.Delegated))
                 {
@@ -333,15 +361,17 @@ public class AccessEvaluator : IAccessEvaluator
         private bool IsAllowFor(AccessRule rule, Guid permissionId)
             => rule.Effect == AccessEffect.Allow && rule.PermissionId == permissionId && ScopeMatches(rule);
 
-        private bool ScopeMatches(AccessRule rule) => rule.ScopeMode switch
-        {
-            ScopeMode.None => _request.ScopeType is null,
-            ScopeMode.All => true,
-            ScopeMode.Selected => _request.ScopeType is not null
-                && _request.ScopeKey is not null
-                && rule.Scopes.Any(s => s.ScopeType == _request.ScopeType && s.ScopeKey == _request.ScopeKey),
-            _ => false
-        };
+        private bool ScopeMatches(AccessRule rule) => _requireAllScope
+            ? rule.Effect == AccessEffect.Deny || rule.ScopeMode == ScopeMode.All
+            : rule.ScopeMode switch
+            {
+                ScopeMode.None => _request.ScopeType is null,
+                ScopeMode.All => true,
+                ScopeMode.Selected => _request.ScopeType is not null
+                    && _request.ScopeKey is not null
+                    && rule.Scopes.Any(s => s.ScopeType == _request.ScopeType && s.ScopeKey == _request.ScopeKey),
+                _ => false
+            };
 
         private async Task<List<AccessRule>> GetSubjectRulesAsync(Guid principalId, CancellationToken cancellationToken)
         {

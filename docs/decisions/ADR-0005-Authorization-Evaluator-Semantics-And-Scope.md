@@ -57,6 +57,29 @@ For a request `(user, company, application, permission, scopeType?, scopeKey?)`:
 - **Delegation.** A delegated ALLOW is valid only while the delegator is an active member of the request company **and** is allowed the permission without counting any delegation. So no delegation chains, and the grant is lost as soon as the source loses it.
 - **Single role authority.** A role's rules live only on its `AuthPrincipal` (`Type = Role`). `Role.PrincipalId` was removed by a forward migration that backfills any missing principals.
 
+### Admin Authority on grant paths (section 32)
+
+Holding `Role.Permissions.Manage` or `Role.BulkAssign` is necessary but not sufficient. `UpdateRolePermissions`, `CopyRolePermissions` and `BulkAssign` also require `IAdminAuthority`, which reuses the evaluator's session:
+
+- **Managing role.** A candidate M is a role the actor holds directly in the workspace company, is `Standard`, active and unexpired, and has the target role as a **strict** descendant. The target can never be M itself.
+- **Effective permission.** For every entry, M's branch **alone** must effectively allow the permission. It follows the same Role Up, DENY boundaries (M's path and ancestors) and prerequisites as above. The actor's direct ALLOWs and delegations do not count. The actor's direct DENY still applies globally.
+- **Scope superset.** The requested scope must be covered by M:
+  - `None` is evaluated as an unscoped request;
+  - each `Selected` pair is evaluated on its own;
+  - `All` requires a `ScopeMode.All` ALLOW on M's branch, and any DENY on the branch blocks it.
+- **No combining.** Each M is checked on its own. Two roles that each cover part of a request (the permission and the target, or different scope keys) do not add up to authority.
+- **Super-admins.** A valid company or global super-admin is exempt (section 31).
+- **Per path:**
+  - `UpdateRolePermissions` checks every entry, DENY entries included: a manager cannot restrict what it does not hold.
+  - `CopyRolePermissions` checks every copied rule, and requires authority over the target in both `APPEND` and `REPLACE` mode.
+  - `BulkAssign` requires the assigned role to be a strict descendant of M.
+- A failed check returns **403** and changes nothing.
+- Because of Role Up, M's branch includes rules already held by its descendants. A manager may therefore re-grant, within its own subtree, anything that subtree already holds.
+
+### Single authorization application
+
+Administration is locked to one application, `AccessControlApplication.Code = "QC"`. `PermissionAuthorizationHandler` evaluates permissions against it. Every role handler and the resource tree only see QC roles and resources, so any other `ApplicationId` returns **404**. The role list has no application filter.
+
 ### Tenant isolation
 
 - `WorkspaceContextMiddleware` accepts `X-Company-Id` only after validating an active membership, and exposes it as `ICurrentWorkspace.CompanyId`. No handler trusts a company id from the payload.

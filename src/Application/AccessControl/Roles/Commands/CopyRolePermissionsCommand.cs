@@ -19,11 +19,13 @@ public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermiss
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
+    private readonly IAdminAuthority _adminAuthority;
 
-    public CopyRolePermissionsCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
+    public CopyRolePermissionsCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, IAdminAuthority adminAuthority)
     {
         _context = context;
         _workspace = workspace;
+        _adminAuthority = adminAuthority;
     }
 
     public async Task<int> Handle(CopyRolePermissionsCommand request, CancellationToken cancellationToken)
@@ -52,6 +54,15 @@ public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermiss
 
         var targetPrincipal = await LoadRolePrincipalAsync(targetRole, cancellationToken);
         var sourcePrincipal = await LoadRolePrincipalAsync(sourceRole, cancellationToken);
+        var sourceRules = sourcePrincipal.AccessRules.Where(r => r.Origin != AccessRuleOrigin.Delegated).ToList();
+
+        await _adminAuthority.EnsureCanGrantAsync(
+            targetRole.Id,
+            sourceRules.Select(r => new AuthorityGrant(
+                r.PermissionId,
+                r.ScopeMode,
+                r.Scopes.Select(s => new AuthorityScope(s.ScopeType, s.ScopeKey)).ToList())).ToList(),
+            cancellationToken);
 
         if (request.Mode == "REPLACE")
         {
@@ -63,7 +74,7 @@ public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermiss
         }
 
         int copied = 0;
-        foreach (var sourceRule in sourcePrincipal.AccessRules.Where(r => r.Origin != AccessRuleOrigin.Delegated))
+        foreach (var sourceRule in sourceRules)
         {
             if (request.Mode == "APPEND" && targetPrincipal.AccessRules.Any(ar => ar.PermissionId == sourceRule.PermissionId && ar.Effect == sourceRule.Effect))
                 continue;

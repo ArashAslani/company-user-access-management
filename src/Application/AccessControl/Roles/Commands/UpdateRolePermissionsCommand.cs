@@ -31,11 +31,13 @@ public class UpdateRolePermissionsCommandHandler : IRequestHandler<UpdateRolePer
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
+    private readonly IAdminAuthority _adminAuthority;
 
-    public UpdateRolePermissionsCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
+    public UpdateRolePermissionsCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, IAdminAuthority adminAuthority)
     {
         _context = context;
         _workspace = workspace;
+        _adminAuthority = adminAuthority;
     }
 
     public async Task Handle(UpdateRolePermissionsCommand request, CancellationToken cancellationToken)
@@ -58,6 +60,7 @@ public class UpdateRolePermissionsCommandHandler : IRequestHandler<UpdateRolePer
 
         Guard.Against.NotFound(role.Id, principal);
 
+        var changes = new List<(Guid PermissionId, RolePermissionAction Action, bool Selected)>();
         foreach (var entry in request.Entries)
         {
             var resourceExists = await _context.Resources
@@ -74,24 +77,37 @@ public class UpdateRolePermissionsCommandHandler : IRequestHandler<UpdateRolePer
                 if (permission == null)
                     throw new NotFoundException($"{entry.ResourceId}/{action.ActionCode}", nameof(Permission));
 
-                var rule = principal.AccessRules.FirstOrDefault(ar => ar.PermissionId == permission.Id && ar.Effect == action.Effect);
-
-                if (rule == null)
-                {
-                    rule = new AccessRule(principal.Id, permission.Id, action.Effect);
-                    principal.AddAccessRule(rule);
-                }
-
                 var selected = action.ScopeKeys is { Length: > 0 } && !string.IsNullOrEmpty(action.ScopeType);
-                rule.SetScopeMode(selected ? ScopeMode.Selected : ScopeMode.None);
-                rule.ClearScopes();
+                changes.Add((permission.Id, action, selected));
+            }
+        }
 
-                if (selected)
+        // DENY entries need the same authority as ALLOW entries: a manager cannot restrict what it does not hold.
+        await _adminAuthority.EnsureCanGrantAsync(
+            role.Id,
+            changes.Select(c => c.Selected
+                ? new AuthorityGrant(c.PermissionId, ScopeMode.Selected, c.Action.ScopeKeys!.Select(k => new AuthorityScope(c.Action.ScopeType!, k)).ToList())
+                : new AuthorityGrant(c.PermissionId, ScopeMode.None)).ToList(),
+            cancellationToken);
+
+        foreach (var (permissionId, action, selected) in changes)
+        {
+            var rule = principal.AccessRules.FirstOrDefault(ar => ar.PermissionId == permissionId && ar.Effect == action.Effect);
+
+            if (rule == null)
+            {
+                rule = new AccessRule(principal.Id, permissionId, action.Effect);
+                principal.AddAccessRule(rule);
+            }
+
+            rule.SetScopeMode(selected ? ScopeMode.Selected : ScopeMode.None);
+            rule.ClearScopes();
+
+            if (selected)
+            {
+                foreach (var scopeKey in action.ScopeKeys!.Distinct())
                 {
-                    foreach (var scopeKey in action.ScopeKeys!.Distinct())
-                    {
-                        rule.AddScope(action.ScopeType!, scopeKey);
-                    }
+                    rule.AddScope(action.ScopeType!, scopeKey);
                 }
             }
         }

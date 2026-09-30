@@ -234,6 +234,7 @@ public class RoleApiTests : ApiTestBase
     public async Task UpdateRolePermissions_WithValidData_ReturnsOk()
     {
         var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Permissions.Manage", "AccessManagement.Role.Create");
+        var manager = await CreateManagingRoleAsync(session, _companyId, "MANAGER", ScopeMode.All, _productsReadPermId);
 
         var roleCommand = new
         {
@@ -242,7 +243,7 @@ public class RoleApiTests : ApiTestBase
             Code = "TESTROLE",
             Name = "Test Role",
             Kind = RoleKind.Standard,
-            ParentRoleId = (Guid?)null
+            ParentRoleId = (Guid?)manager.RoleId
         };
 
         var createResponse = await session.Client.PostAsJsonAsync("/api/v1/access-control/roles", roleCommand);
@@ -281,7 +282,8 @@ public class RoleApiTests : ApiTestBase
     public async Task UpdateRolePermissions_CalledTwice_DoesNotDuplicateRules()
     {
         var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Create", "AccessManagement.Role.Permissions.Manage");
-        var roleId = await CreateRoleViaApiAsync(session, "IDEMPOTENT");
+        var manager = await CreateManagingRoleAsync(session, _companyId, "MANAGER", ScopeMode.All, _productsReadPermId);
+        var roleId = await CreateRoleViaApiAsync(session, "IDEMPOTENT", manager.RoleId);
         var productsId = await GetProductsResourceIdAsync();
 
         var scoped = PermissionsBody(productsId, ("Read", AccessEffect.Allow, "Workshop", ["A", "B"]));
@@ -321,8 +323,9 @@ public class RoleApiTests : ApiTestBase
     public async Task CopyRolePermissions_CopiesSourceRoleRulesIntoTarget()
     {
         var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Create", "AccessManagement.Role.Permissions.Manage");
-        var sourceId = await CreateRoleViaApiAsync(session, "SOURCE");
-        var targetId = await CreateRoleViaApiAsync(session, "TARGET");
+        var manager = await CreateManagingRoleAsync(session, _companyId, "MANAGER", ScopeMode.All, _productsReadPermId, _productsEditPermId);
+        var sourceId = await CreateRoleViaApiAsync(session, "SOURCE", manager.RoleId);
+        var targetId = await CreateRoleViaApiAsync(session, "TARGET", manager.RoleId);
         var productsId = await GetProductsResourceIdAsync();
 
         var body = PermissionsBody(productsId, ("Read", AccessEffect.Allow, "Workshop", ["A"]), ("Edit", AccessEffect.Deny, null, null));
@@ -346,12 +349,13 @@ public class RoleApiTests : ApiTestBase
     public async Task CopyRolePermissions_Replace_RemovesTargetRulesNotInSource()
     {
         var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.Create", "AccessManagement.Role.Permissions.Manage");
-        var sourceId = await CreateRoleViaApiAsync(session, "SOURCE");
-        var targetId = await CreateRoleViaApiAsync(session, "TARGET");
+        var manager = await CreateManagingRoleAsync(session, _companyId, "MANAGER", ScopeMode.All, _productsReadPermId, _productsDeletePermId);
+        var sourceId = await CreateRoleViaApiAsync(session, "SOURCE", manager.RoleId);
+        var targetId = await CreateRoleViaApiAsync(session, "TARGET", manager.RoleId);
         var productsId = await GetProductsResourceIdAsync();
 
-        await session.Client.PutAsJsonAsync($"/api/v1/access-control/roles/{sourceId}/permissions", PermissionsBody(productsId, ("Read", AccessEffect.Allow, null, null)));
-        await session.Client.PutAsJsonAsync($"/api/v1/access-control/roles/{targetId}/permissions", PermissionsBody(productsId, ("Delete", AccessEffect.Allow, null, null)));
+        (await session.Client.PutAsJsonAsync($"/api/v1/access-control/roles/{sourceId}/permissions", PermissionsBody(productsId, ("Read", AccessEffect.Allow, null, null)))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await session.Client.PutAsJsonAsync($"/api/v1/access-control/roles/{targetId}/permissions", PermissionsBody(productsId, ("Delete", AccessEffect.Allow, null, null)))).StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var response = await session.Client.PostAsJsonAsync($"/api/v1/access-control/roles/{targetId}/permissions/copy-from", new { SourceRoleId = sourceId, Mode = "REPLACE" });
 

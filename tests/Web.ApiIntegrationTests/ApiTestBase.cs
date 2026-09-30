@@ -376,6 +376,30 @@ public abstract class ApiTestBase
         return new AuthSession(client, user.Id, principalId, grantedPermissions);
     }
 
+    /// <summary>
+    /// Creates a root standard role with an ALLOW rule of <paramref name="scopeMode"/> for each permission and assigns it to the
+    /// session's membership, so it is the actor's managing role (design §32) for roles created beneath it.
+    /// </summary>
+    protected async Task<ManagingRole> CreateManagingRoleAsync(AuthSession session, Guid companyId, string code, ScopeMode scopeMode, params Guid[] permissionIds)
+    {
+        return await WithDbAsync(async db =>
+        {
+            var qcApp = await db.Applications.SingleAsync(a => a.Code == "QC");
+            var userCompanyId = await db.UserCompanies.Where(uc => uc.PrincipalId == session.PrincipalId).Select(uc => uc.Id).SingleAsync();
+
+            var role = new Role(companyId, qcApp.Id, code, code);
+            var principal = AuthPrincipal.ForRole(role.Id, companyId, qcApp.Id);
+            db.BusinessRoles.Add(role);
+            db.AuthPrincipals.Add(principal);
+            foreach (var permissionId in permissionIds)
+                db.AccessRules.Add(new AccessRule(principal.Id, permissionId, AccessEffect.Allow, AccessRuleOrigin.Manual, scopeMode));
+            db.UserRoles.Add(new UserRole(userCompanyId, role.Id));
+
+            await db.SaveChangesAsync(default);
+            return new ManagingRole(role.Id, principal.Id);
+        });
+    }
+
     private static async Task<Guid> ResolvePermissionIdAsync(ApplicationDbContext db, Guid applicationId, string permissionCode)
     {
         var separator = permissionCode.IndexOf('.');
@@ -398,3 +422,5 @@ public abstract class ApiTestBase
 }
 
 public record AuthSession(HttpClient Client, Guid UserId, Guid PrincipalId, Dictionary<string, Guid> GrantedPermissions);
+
+public record ManagingRole(Guid RoleId, Guid PrincipalId);

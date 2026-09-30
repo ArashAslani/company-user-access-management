@@ -202,10 +202,11 @@ public class TenantIsolationApiTests : ApiTestBase
     [Test]
     public async Task BulkAssign_UserCompanyInOtherCompany_NotFound()
     {
-        var local = await CreateRoleAsync(_companyId, _appId, "Local", "LOCAL");
         var foreignUser = await CreateUserAsync("foreign@test.com", "Test123!");
         var foreignMembership = await CreateUserCompanyAsync(foreignUser.Id, _otherCompanyId, Guid.Empty);
         var session = await CreateAuthorizedClientAsync(_companyId, "AccessManagement.Role.Read", "AccessManagement.Role.BulkAssign");
+        var manager = await CreateManagingRoleAsync(session, _companyId, "MANAGER", ScopeMode.None);
+        var local = await CreateRoleAsync(_companyId, _appId, "Local", "LOCAL", parentRoleId: manager.RoleId);
 
         var response = await session.Client.PostAsJsonAsync("/api/v1/access-control/roles/bulk-assign",
             new { RoleId = local, UserCompanyIds = new[] { foreignMembership.Id } });
