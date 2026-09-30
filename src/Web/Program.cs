@@ -32,9 +32,8 @@ else
 
 app.UseHttpsRedirection();
 
-// Configure CORS - allow specific origins from configuration, or allow any in development
-var allowedOrigins = app.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
-    ?? (app.Environment.IsDevelopment() ? new[] { "http://localhost:4200", "http://localhost:3000", "http://localhost:5000" } : Array.Empty<string>());
+// CORS is enabled only for explicitly configured origins (appsettings.Development.json locally).
+var allowedOrigins = app.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 
 if (allowedOrigins.Length > 0)
 {
@@ -42,15 +41,6 @@ if (allowedOrigins.Length > 0)
         .WithOrigins(allowedOrigins)
         .AllowAnyMethod()
         .AllowAnyHeader()
-        .AllowCredentials());
-}
-else
-{
-    // In development without explicit config, allow common dev origins
-    app.UseCors(policy => policy
-        .AllowAnyMethod()
-        .AllowAnyHeader()
-        .SetIsOriginAllowed(_ => true)
         .AllowCredentials());
 }
 

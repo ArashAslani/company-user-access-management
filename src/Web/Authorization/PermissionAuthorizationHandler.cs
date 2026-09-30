@@ -1,29 +1,27 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
-using CompanyAccessManagement.Web.Services;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 
 namespace CompanyAccessManagement.Web.Authorization;
 
+/// <summary>
+/// Authorizes a <see cref="PermissionRequirement"/> by evaluating its permission for the current user in the
+/// workspace company. Endpoint metadata is not consulted, so a missing or mismatched attribute can never grant access.
+/// </summary>
 public class PermissionAuthorizationHandler : AuthorizationHandler<PermissionRequirement>
 {
     private readonly IAccessEvaluator _accessEvaluator;
     private readonly IUser _currentUser;
     private readonly ICurrentWorkspace _currentWorkspace;
-    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public PermissionAuthorizationHandler(
         IAccessEvaluator accessEvaluator,
         IUser currentUser,
-        ICurrentWorkspace currentWorkspace,
-        IHttpContextAccessor httpContextAccessor)
+        ICurrentWorkspace currentWorkspace)
     {
         _accessEvaluator = accessEvaluator;
         _currentUser = currentUser;
         _currentWorkspace = currentWorkspace;
-        _httpContextAccessor = httpContextAccessor;
     }
 
     protected override async Task HandleRequirementAsync(
@@ -33,33 +31,18 @@ public class PermissionAuthorizationHandler : AuthorizationHandler<PermissionReq
         var userId = _currentUser.Id;
         var companyId = _currentWorkspace.CompanyId;
 
-        if (userId == null || companyId == null)
+        if (userId == null || companyId == null || string.IsNullOrWhiteSpace(requirement.Permission))
         {
             context.Fail();
-            return;
-        }
-
-        // Check if endpoint has RequirePermissionMetadata
-        var endpoint = _httpContextAccessor.HttpContext?.GetEndpoint();
-        var permissionMetadata = endpoint?.Metadata.GetMetadata<RequirePermissionMetadata>();
-
-        // If no metadata, allow (for endpoints without explicit permission)
-        if (permissionMetadata == null)
-        {
-            context.Succeed(requirement);
             return;
         }
 
         var decision = await _accessEvaluator.EvaluateAsync(
-            new AccessRequest(userId.Value, companyId.Value, "QC", permissionMetadata.Permission));
+            new AccessRequest(userId.Value, companyId.Value, "QC", requirement.Permission));
 
         if (decision.Allowed)
-        {
             context.Succeed(requirement);
-        }
         else
-        {
             context.Fail();
-        }
     }
 }
