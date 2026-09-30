@@ -2,74 +2,78 @@
 
 [![Build and Test](https://github.com/ArashAslani/company-user-access-management/actions/workflows/build.yml/badge.svg)](https://github.com/ArashAslani/company-user-access-management/actions/workflows/build.yml)
 
-A multi-company **Organization, Identity & Authorization** backend built with **ASP.NET Core 10** and **Clean Architecture**, featuring hierarchical roles, scoped permissions, explicit DENY rules, delegation, and auditable access decisions.
+A portfolio / reference implementation of a multi-company **Organization, Identity & Authorization** backend. It is built with **ASP.NET Core 10**, **EF Core 10 on SQLite** and **Clean Architecture** as a modular monolith.
 
-## Why This Project Exists
+The goal is a small codebase whose behaviour is fully pinned by tests. It is not a production-hardened product. See [Known limitations](#known-limitations).
 
-Most enterprise applications need to manage **who can do what** across multiple companies or tenants. This project demonstrates a production-oriented backend that cleanly separates:
+## What it does
 
-- **Identity** (authentication via ASP.NET Core Identity) — *who you are*
-- **Organization** (companies, positions, personnel, effective dating) — *where you work*
-- **Authorization** (roles, permissions, scopes, delegation, audit) — *what you can do*
+It keeps three concerns separate:
 
-Unlike simple RBAC, this system implements:
-- Hierarchical roles with **Role Up** (inherit ancestor permissions) and **Role Down** (DENY propagates to descendants)
-- **Branch-local DENY** — a DENY on one role branch doesn't kill ALLOW on another
-- **Permission prerequisites** (e.g., `Edit` requires `Read`)
-- **Scope-aware** permissions (`NONE` / `SELECTED` / `ALL`)
-- **Delegation** with expiry and revocation
-- **Super Admin** boundaries (Company / Global)
+- **Identity** (ASP.NET Core Identity, bearer tokens) answers *who you are*.
+- **Organization** (companies, positions, personnel, effective-dated assignments) answers *where you work*.
+- **Authorization** (roles, permissions, scopes, delegation) answers *what you can do*.
 
-## Key Capabilities
+**Position ≠ Role.** Holding a position never grants system access by itself.
 
-| Area | Features |
-|------|----------|
-| **Multi-company** | Complete isolation; `UserCompany` membership required for any access |
-| **Hierarchical Roles** | Parent/child roles; Role Up (allow), Role Down (deny boundary) |
-| **Explicit DENY** | DENY always wins; branch-local; future descendants blocked |
-| **Prerequisite Gates** | `Edit` → `Read`; DENY on prerequisite blocks stronger permission |
-| **Scopes** | `NONE` (no scope), `SELECTED` (workshop A), `ALL` (any scope) |
-| **Delegation** | Time-bounded; auto-revoked on source loss |
-| **Super Admins** | Company & Global; bypass all checks |
-| **Audit** | Every access decision logged with source trace |
-| **Organization** | Position hierarchy, personnel, effective dating (`EffectiveFrom`/`EffectiveTo`) |
-| **Position ≠ Role** | Employment ≠ System access; no auto-conversion |
+### Authorization semantics
+
+These rules are recorded in [ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md) and each one has a named test.
+
+| Rule | Behaviour |
+|---|---|
+| Role Up | A user holding role R is allowed what R **or any descendant** of R allows. Ancestor ALLOWs are not inherited downward. |
+| Role Down / DENY boundary | A DENY on any role between the origin role and R, or on any ancestor of R, blocks that branch. A shared ancestor's DENY blocks every branch beneath it. A sibling's DENY does not block another branch. |
+| Direct user DENY | Global. It wins over every role branch and delegation, including a DENY on a prerequisite. |
+| Prerequisites | For example, `Products.Edit` requires `Products.Read`. Prerequisites are evaluated recursively, and a prerequisite denied on the candidate's own path blocks it. |
+| Validity | Inactive or expired roles grant nothing, but their DENYs still apply. Super-admin roles follow the same validity rules. |
+| Scopes (fail-closed) | `None` matches only unscoped requests, `All` matches any scope, and `Selected` matches only an exact `(type, key)` pair. |
+| Delegation | Valid only while the delegator is an active member of the same company and is still allowed the permission, not counting delegations. |
+| Super admins | `CompanySuperAdmin` applies within its company; `GlobalSuperAdmin` applies across companies. These kinds cannot be created, edited or escalated to through the API. |
+
+`IAccessEvaluator.EvaluateAsync` returns an `AccessDecision { Allowed, ReasonCode, Sources[] }`. `Sources` is a per-request **decision trace**: it records which rule and role produced the grant. It is **not** a persisted audit log. An `AuditLog` table exists in the schema, but nothing writes to it yet.
+
+### Tenant isolation
+
+Every business request carries `Authorization: Bearer <token>` and `X-Company-Id: <companyId>`.
+
+- `WorkspaceContextMiddleware` accepts the header only for an active membership of that company.
+- Handlers take the company from the workspace, never from the payload.
+
+| Situation | Response |
+|---|---|
+| No or invalid token | 401 |
+| Missing permission, or an `X-Company-Id` without an active membership | 403 |
+| A body or query `companyId` that differs from the workspace | 403 |
+| Another company's position, role, assignment or membership, referenced by id | 404 |
+| A domain rule violation (overlap, cycle, duplicate code, sealed assignment, …) | 409, with a `code` in the ProblemDetails |
+
+Personnel have no company of their own. A person is visible in a workspace when they hold an active assignment to one of its positions, or have no active assignment at all.
 
 ## Architecture
 
 ```mermaid
 graph TD
-    subgraph Identity
-        A[ASP.NET Core Identity] -->|Authentication| B[ApplicationUser]
-        B --> C[UserCompany]
-    end
-    
-    subgraph Organization
-        D[Company] --> E[Position]
-        E -->|Hierarchy| E
-        D --> F[Personnel]
-        F --> G[PersonnelPosition]
-        G -->|Effective Dating| G
-    end
-    
-    subgraph Authorization
-        H[Role] -->|Hierarchy| H
-        H --> I[AuthPrincipal]
-        C --> I
-        I --> J[AccessRule]
-        J -->|ALLOW/DENY| K[IAccessEvaluator]
-        J -->|Scopes| L[RuleScope]
-        J -->|Delegation| J
-        M[Permission] -->|Implications| M
-        K --> N[AccessDecision]
-        N --> O[AuditLog]
-    end
-    
-    C -.->|Membership| K
-    F -.->|Employment| G
+    Web[Web: minimal API endpoints, auth pipeline] --> Infrastructure
+    Web --> Application
+    Infrastructure[Infrastructure: EF Core SQLite, Identity, AccessEvaluator] --> Application
+    Application[Application: MediatR handlers, validation, tenancy helpers] --> Domain
+    Domain[Domain: entities, domain rules]
 ```
 
-## Core Domain Model
+`tests/ArchitectureTests` (NetArchTest) enforces these dependency rules:
+
+- Domain references no Application, Infrastructure, Web, ASP.NET Core or EF Core.
+- Application references no Infrastructure or Web.
+- Infrastructure references no Web.
+
+The request pipeline runs in this order:
+
+1. `UseAuthentication`
+2. `WorkspaceContextMiddleware` (resolves `X-Company-Id`)
+3. `UseAuthorization`
+
+On each endpoint, `RequirePermission("Resource.Action")` then calls the evaluator. The handler fails closed when the user, the workspace or the permission is missing.
 
 ```mermaid
 erDiagram
@@ -82,169 +86,119 @@ erDiagram
     USER_COMPANY ||--o{ USER_ROLE : has
     ROLE ||--o{ USER_ROLE : assigns
     ROLE ||--o{ ROLE : parent
-    USER_COMPANY }|--|| AUTH_PRINCIPAL : maps
-    ROLE }|--|| AUTH_PRINCIPAL : maps
+    USER_COMPANY ||--|| AUTH_PRINCIPAL : maps
+    ROLE ||--|| AUTH_PRINCIPAL : maps
     AUTH_PRINCIPAL ||--o{ ACCESS_RULE : has
     ACCESS_RULE ||--o{ RULE_SCOPE : has
-    PERMISSION }|--|| ACCESS_RULE : secures
+    PERMISSION ||--o{ ACCESS_RULE : secures
     PERMISSION ||--o{ PERMISSION_IMPLICATION : requires
 ```
 
-## Authorization Decision Model
+The domain enforces the following rules:
 
-```
-User → UserCompany (membership)
-      → Direct AccessRules
-      → Roles (UserRole → AuthPrincipal → AccessRules)
-          → Role Up (ancestors allow)
-          → Role Down (descendants blocked by DENY)
-      → Delegations (time-bounded, revocable)
-      → DENY boundary (explicit DENY wins)
-      → Prerequisite gates (Edit→Read)
-      → Scope match (NONE/SELECTED/ALL)
-      → Super Admin (Company/Global)
-      → AccessDecision { Allowed, ReasonCode, Sources[] }
-```
+- **Position and role hierarchies** reject cycles (409 `HIERARCHY_CYCLE`).
+- **Personnel positions** are effective-dated: `IsCurrentlyEffective = Active ∧ From ≤ now ∧ (To = null ∨ To > now)`, derived at read time rather than stored.
+- Overlapping assignments to the same position are rejected.
+- At most one primary position per company may be effective at a time.
+- Assignments whose effective window has ended are sealed.
 
-## Technology Stack
-
-- **ASP.NET Core 10** — Web API
-- **Entity Framework Core 10** — ORM with SQLite
-- **MediatR** — CQRS (commands/queries)
-- **AutoMapper** — DTO mapping
-- **FluentValidation** — Request validation
-- **ASP.NET Core Identity** — Authentication only
-- **Scalar** — OpenAPI/Swagger UI
-- **NUnit / Moq** — Testing
-- **GitHub Actions** — CI
-
-## Running Locally
+## Running locally
 
 ```bash
-# 1. Clone
 git clone https://github.com/ArashAslani/company-user-access-management.git
 cd company-user-access-management
 
-# 2. Restore & Build
 dotnet restore
 dotnet build
-
-# 3. Run (SQLite database auto-created via EF Core migrations)
-dotnet run --project src/Web
-
-# 4. Explore API
-# Open http://localhost:5000/scalar for Scalar UI
+dotnet run --project src/Web      # http://localhost:5000, Scalar UI at /scalar
 ```
 
-### Database Initialization
+On startup in Development, the app applies EF Core migrations (never `EnsureCreated`) to `CleanArchitecture.db` and runs an idempotent seeder. The seeder creates:
 
-- Uses **EF Core migrations** (`src/Infrastructure/Data/Migrations`)
-- On first run in Development: `Database.MigrateAsync()` applies migrations + seeds QC application, permissions, implications
-- No `EnsureDeleted`/`EnsureCreated` — safe for production
-- Seed data: QC app, resources (Products, Laboratory, NCR, Organization, AccessManagement), permission implications (`Edit` → `Read`)
+- the `Administrator` identity role;
+- the `administrator@localhost` / `Administrator1!` user;
+- the `QC` application with its resources, permissions and prerequisites.
 
-## API Exploration
+It seeds **no companies or memberships**, so every business endpoint returns 403 until a company, a `UserCompany` and access rules exist. There is no API for those yet; the integration tests create them through the data layer (see `ApiTestBase.CreateAuthorizedClientAsync`).
 
-- **Scalar UI**: `http://localhost:5000/scalar`
-- **OpenAPI JSON**: `http://localhost:5000/openapi/v1.json`
+## API
 
-### Key Endpoints
+| Area | Routes |
+|---|---|
+| Identity (ASP.NET Core Identity) | `POST /register`, `POST /login`, `POST /refresh`, `/manage/*`, … |
+| Positions | `GET/POST /api/v1/organization/positions`, `GET/PUT/DELETE /api/v1/organization/positions/{id}`, `GET /api/v1/organization/positions/{id}/summary`, `GET /api/v1/organization/positions/tree?holdingId=` |
+| Personnel | `GET/POST /api/v1/organization/personnel`, `GET/PUT/DELETE /api/v1/organization/personnel/{id}`, `POST /api/v1/organization/personnel/{id}/positions`, `PUT/DELETE /api/v1/organization/personnel/{personnelId}/positions/{assignmentId}`, `POST /api/v1/organization/personnel/{id}/signature` |
+| Roles | `GET/POST /api/v1/access-control/roles`, `GET/PUT/DELETE /api/v1/access-control/roles/{id}`, `GET /api/v1/access-control/roles/tree?holdingId=`, `PUT /api/v1/access-control/roles/{id}/permissions`, `POST /api/v1/access-control/roles/{id}/permissions/copy-from`, `POST /api/v1/access-control/roles/bulk-assign` |
+| Scopes | `GET /api/v1/access-control/scopes/resources/tree?applicationId=` |
+| Docs | `GET /openapi/v1.json`, `GET /scalar` |
 
-| Area | Endpoints |
-|------|-----------|
-| **Authorization** | `GET/POST /api/v1/access-control/roles`, `GET /api/v1/access-control/roles/tree`, `PUT /api/v1/access-control/roles/{id}/permissions`, `POST /api/v1/access-control/roles/bulk-assign` |
-| **Scopes** | `GET /api/v1/access-control/scopes/workshops`, `GET /api/v1/access-control/scopes/resources/tree` |
-| **Audit** | `GET /api/v1/audit/access-history`, `GET /api/v1/audit/access-history/export` |
-| **Positions** | `GET/POST/PUT/DELETE /api/v1/organization/positions`, `GET /api/v1/organization/positions/tree` |
-| **Personnel** | `GET/POST/PUT/DELETE /api/v1/organization/personnel`, `POST /api/v1/organization/personnel/{id}/positions` |
-| **Attachments** | `POST /api/v1/attachments` |
-
-## Demo Scenario
+Permission names are canonical `Resource.Action` codes, e.g. `Organization.Position.Read` and `AccessManagement.Role.Permissions.Manage`. [`src/Web/Web-webapi.http`](src/Web/Web-webapi.http) contains ready-made requests.
 
 ```bash
-# 1. Register user
-POST /api/v1/identity/register { email, password }
+# 1. Log in and keep the accessToken
+curl -X POST http://localhost:5000/login -H "Content-Type: application/json" \
+  -d '{"email":"administrator@localhost","password":"Administrator1!"}'
 
-# 2. Login
-POST /api/v1/identity/login { username, password }
-
-# 3. Select company (sets workspace context)
-POST /api/v1/workspace/select-company { companyId }
-
-# 4. Create role
-POST /api/v1/access-control/roles { companyId, code: "EDITOR", name: "Editor" }
-
-# 5. Grant permission to role
-PUT /api/v1/access-control/roles/{roleId}/permissions 
-  { roleId, permissions: [{ permissionId: "Products.Read" }] }
-
-# 6. Assign role to user (bulk)
-POST /api/v1/access-control/roles/bulk-assign 
-  { roleId, userCompanyIds: [...] }
-
-# 7. Evaluate access (via authorization middleware on protected endpoints)
-# Or call IAccessEvaluator directly:
-var decision = await accessEvaluator.EvaluateAsync(new AccessRequest(
-  UserId, CompanyId, "QC", "Products.Read", null, null));
-
-# 8. Add explicit DENY on same role/permission
-# Observe: decision.Allowed = false, ReasonCode = "DENIED_EXPLICIT_DENY"
+# 2. Call a business endpoint in a company workspace
+curl http://localhost:5000/api/v1/organization/positions/ \
+  -H "Authorization: Bearer <accessToken>" -H "X-Company-Id: <companyId>"
 ```
 
 ## Testing
 
 ```bash
-# All tests
-dotnet test
-
-# Authorization integration tests (11 scenarios)
-dotnet test tests/Infrastructure.IntegrationTests/
-
-# Test coverage includes:
-# - Company isolation (A ≠ B)
-# - Multiple role union
-# - Self DENY blocks
-# - Ancestor DENY blocks descendants
-# - Branch-local DENY
-# - Permission prerequisites (Edit→Read)
-# - Direct user grants
-# - Delegation expiration
-# - Company/Global Super Admin
-# - Scope NONE/SELECTED/ALL behavior
+dotnet test CompanyAccessManagement.slnx
 ```
 
-## Architecture Decisions
+All tests run the real stack: migrations applied to a temporary file-backed SQLite database, with no EF InMemory provider. The API tests go through `WebApplicationFactory<Program>` with real Identity bearer tokens.
 
-See [docs/decisions/](docs/decisions/) for ADRs:
+| Project | Tests | Covers |
+|---|---|---|
+| `tests/ArchitectureTests` | 3 | Layer dependency rules |
+| `tests/Infrastructure.IntegrationTests` | 78 | Evaluator semantics (Role Up/Down, DENY boundaries, prerequisites, validity, delegation, super admins, scopes), organization domain rules, forward-migration data backfills, empty-database migration and seed-twice idempotency |
+| `tests/Web.ApiIntegrationTests` | 86 | 401/403/2xx outcomes, the permission handler and CORS, tenant isolation (403/404), super-admin restrictions, role/position/personnel workflows, and the OpenAPI surface |
 
-- [ADR-0001](docs/decisions/ADR-001-Use-EFCore-In-Application-Layer.md) — EF Core in Application layer
-- [ADR-0002](docs/decisions/ADR-002-Aspire-For-Orchestration-And-Testing.md) — Aspire for orchestration
-- [ADR-0003](docs/decisions/ADR-003-MediatR-Contracts-In-Domain.md) — MediatR contracts in Domain
-- **ADR-0004** — RoleGroup removal + PersonnelPosition effective dating (Accepted)
+CI ([build.yml](.github/workflows/build.yml)) runs restore, a Release build and the full test suite on every push and pull request to `main`.
 
-## Interesting Engineering Decisions
+## Known limitations
 
-| Decision | Rationale |
-|----------|-----------|
-| **Identity roles ≠ Business roles** | ASP.NET Identity handles authN only; business roles live in `Role` entity |
-| **Position ≠ Role** | Employment (PersonnelPosition) is independent of system access (Role/AccessRule) |
-| **Branch-local DENY** | DENY on one role branch doesn't kill ALLOW on sibling branch |
-| **Permission prerequisites** | `Edit` requires `Read`; evaluated at authorization time |
-| **Effective dating** | `IsCurrentlyEffective = Active ∧ From ≤ now ∧ (To == null ∨ To > now)` — derived, not stored |
-| **Fail-closed scopes** | `SELECTED` with no scope in request = DENY; `NONE` with scope = DENY |
-| **Auditable sources** | Every `AccessDecision` includes `AccessSource[]` tracing origin |
+- There is no API for companies, memberships or delegations; they are created through the data layer.
+- The access decision trace is not persisted, and the `AuditLog` table is unused.
+- The following are intentionally out of scope ([ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md)):
+  - a correction/versioning workflow for sealed assignments;
+  - Workshop entities;
+  - generic attachments;
+  - a frontend.
+- The evaluator loads the company's role graph for each request, with no caching.
+- SQLite only.
+
+## Architecture decisions
+
+See [docs/decisions](docs/decisions/README.md) for the full index and the design documents.
+
+- [ADR-001](docs/decisions/ADR-001-Use-EFCore-In-Application-Layer.md): EF Core in the Application layer
+- [ADR-002](docs/decisions/ADR-002-Aspire-For-Orchestration-And-Testing.md): Aspire for local orchestration
+- [ADR-003](docs/decisions/ADR-003-MediatR-Contracts-In-Domain.md): MediatR contracts in Domain
+- [ADR-0004](docs/decisions/ADR-0004-RoleGroup-Removal-PersonnelPosition-Effective-Dating.md): RoleGroup removal and PersonnelPosition effective dating
+- [ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md): Evaluator semantics, tenant isolation and scope
+
+## Technology stack
+
+- ASP.NET Core 10 minimal APIs, ASP.NET Core Identity (bearer tokens)
+- EF Core 10 with SQLite and migrations
+- MediatR, FluentValidation, AutoMapper, Ardalis.GuardClauses
+- Scalar and OpenAPI
+- NUnit, Shouldly and NetArchTest for testing
+- GitHub Actions for CI
 
 ## Origins / Attribution
 
-This solution was **bootstrapped using Jason Taylor's Clean Architecture Solution Template** (v10.0) and then substantially adapted for the Company Access Management domain:
+This solution was **bootstrapped from [Jason Taylor's Clean Architecture Solution Template](https://github.com/jasontaylordev/CleanArchitecture)** (v10.0) and then substantially adapted for the Company Access Management domain:
 
-- Removed template sample features (Todo, WeatherForecast, Colour)
-- Removed SPA frontends (Angular/React)
-- Removed template packaging, test-templates CI, CodeQL
-- Renamed `CleanArchitecture.*` → `CompanyAccessManagement.*`
-- Implemented domain: Organization (Company/Position/Personnel), Identity (UserCompany), Authorization (Role/Permission/AccessRule/Delegation/Audit)
-- Added ADR-0004: RoleGroup removal + PersonnelPosition effective dating
+- Removed the template's sample features (Todo, WeatherForecast, Colour), SPA frontends, packaging, test-template CI and CodeQL.
+- Renamed `CleanArchitecture.*` to `CompanyAccessManagement.*`.
+- Implemented the Organization, Identity-membership and Authorization domains described above.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE)
+MIT License. See [LICENSE](LICENSE).

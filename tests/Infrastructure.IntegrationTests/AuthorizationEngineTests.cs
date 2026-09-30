@@ -807,6 +807,24 @@ public class AuthorizationEngineTests : TestBase
     }
 
     [Test]
+    public async Task EvaluateAsync_InactiveAncestorDeny_StillBlocksDescendantBranch()
+    {
+        // Grandparent (inactive) DENYs Read -> Parent -> Child ALLOWs Read; user holds Child
+        var (grandparent, _, child) = await CreateRoleChainAsync();
+        await CreateAccessRuleAsync(grandparent.PrincipalId, _productsReadPermId, AccessEffect.Deny);
+        await CreateAccessRuleAsync(child.PrincipalId, _productsReadPermId, AccessEffect.Allow);
+        var grandparentRole = await Context.Roles.SingleAsync(r => r.Id == grandparent.RoleId);
+        grandparentRole.SetStatus(RoleStatus.Inactive);
+        await Context.SaveChangesAsync(default);
+        await AssignRolesToTestUserAsync(child.RoleId);
+
+        var decision = await EvaluateAsync(new AccessRequest(_testUserId, _companyId, "QC", "Products.Read"));
+
+        Assert.That(decision.Allowed, Is.False);
+        Assert.That(decision.ReasonCode, Is.EqualTo("DENIED_EXPLICIT_DENY"));
+    }
+
+    [Test]
     public async Task EvaluateAsync_ExpiredCompanySuperAdmin_DoesNotGrant()
     {
         var role = await CreateExpiredRoleAsync("SuperAdmin", "SUPERADMIN", RoleKind.CompanySuperAdmin);

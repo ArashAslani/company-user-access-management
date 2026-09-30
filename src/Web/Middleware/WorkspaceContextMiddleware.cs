@@ -16,7 +16,7 @@ public class WorkspaceContextMiddleware
 
     public async Task InvokeAsync(HttpContext context, ICurrentWorkspace currentWorkspace, IApplicationDbContext dbContext)
     {
-        // Extract company ID from header or query string
+        // Only the X-Company-Id header selects the workspace
         var companyIdHeader = context.Request.Headers["X-Company-Id"].FirstOrDefault();
         
         if (!string.IsNullOrEmpty(companyIdHeader) && Guid.TryParse(companyIdHeader, out var companyId))
