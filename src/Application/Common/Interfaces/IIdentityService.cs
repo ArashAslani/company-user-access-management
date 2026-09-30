@@ -13,5 +13,8 @@ public interface IIdentityService
     Task<(Result Result, Guid UserId)> CreateUserAsync(string userName, string password);
 
     Task<Result> DeleteUserAsync(string userId);
+
+    /// <summary>True when the account exists, is active and is not deleted.</summary>
+    Task<bool> IsAccountUsableAsync(Guid userId, CancellationToken cancellationToken = default);
 }
 

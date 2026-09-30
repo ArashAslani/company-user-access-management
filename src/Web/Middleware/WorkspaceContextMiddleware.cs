@@ -14,16 +14,17 @@ public class WorkspaceContextMiddleware
         _next = next;
     }
 
-    public async Task InvokeAsync(HttpContext context, ICurrentWorkspace currentWorkspace, IApplicationDbContext dbContext)
+    public async Task InvokeAsync(HttpContext context, ICurrentWorkspace currentWorkspace, IApplicationDbContext dbContext, IIdentityService identityService)
     {
         // Only the X-Company-Id header selects the workspace
         var companyIdHeader = context.Request.Headers["X-Company-Id"].FirstOrDefault();
         
         if (!string.IsNullOrEmpty(companyIdHeader) && Guid.TryParse(companyIdHeader, out var companyId))
         {
-            // Validate membership
+            // Validate membership. A token issued before the account was deactivated or deleted gets no workspace.
             var userIdClaim = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
-            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
+            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId)
+                && await identityService.IsAccountUsableAsync(userId, context.RequestAborted))
             {
                 var userCompany = await dbContext.UserCompanies
                     .FirstOrDefaultAsync(uc => uc.UserId == userId && uc.CompanyId == companyId && uc.Status == CompanyAccessManagement.Domain.AccessControl.UserCompanyStatus.Active);

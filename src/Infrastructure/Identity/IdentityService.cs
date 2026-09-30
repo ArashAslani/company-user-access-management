@@ -72,6 +72,9 @@ public class IdentityService : IIdentityService
         return user != null ? await DeleteUserAsync(user) : Result.Success();
     }
 
+    public Task<bool> IsAccountUsableAsync(Guid userId, CancellationToken cancellationToken = default)
+        => _userManager.Users.AnyAsync(u => u.Id == userId && u.IsActive && !u.IsDeleted, cancellationToken);
+
     public async Task<Result> DeleteUserAsync(ApplicationUser user)
     {
         var result = await _userManager.DeleteAsync(user);

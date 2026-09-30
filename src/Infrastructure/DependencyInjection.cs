@@ -55,7 +55,8 @@ public static class DependencyInjection
             .AddIdentityCore<ApplicationUser>()
             .AddRoles<IdentityRole<Guid>>()
             .AddEntityFrameworkStores<ApplicationDbContext>()
-            .AddApiEndpoints();
+            .AddApiEndpoints()
+            .AddSignInManager<ApplicationSignInManager>();
 
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddTransient<IIdentityService, IdentityService>();

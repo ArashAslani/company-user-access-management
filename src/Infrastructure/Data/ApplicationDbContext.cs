@@ -43,7 +43,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         builder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
 
         // Identity tables in 'identity' schema
-        builder.Entity<ApplicationUser>(b => b.ToTable("AspNetUsers", "identity"));
+        builder.Entity<ApplicationUser>(b =>
+        {
+            b.ToTable("AspNetUsers", "identity");
+            // At most one live operational account per personnel; deleted accounts keep their link as history.
+            b.HasIndex(u => u.PersonnelId)
+                .IsUnique()
+                .HasFilter("\"PersonnelId\" IS NOT NULL AND \"IsDeleted\" = 0");
+        });
         builder.Entity<IdentityRole<Guid>>(b => b.ToTable("AspNetRoles", "identity"));
         builder.Entity<IdentityUserRole<Guid>>(b => b.ToTable("AspNetUserRoles", "identity"));
         builder.Entity<IdentityUserClaim<Guid>>(b => b.ToTable("AspNetUserClaims", "identity"));
