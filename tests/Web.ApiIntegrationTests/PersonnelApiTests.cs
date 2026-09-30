@@ -351,6 +351,49 @@ public class PersonnelApiTests : ApiTestBase
     }
 
     [Test]
+    public async Task UpdatePersonnel_NationalCode_UpdatesPersistedValue()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.Personnel.Read", "Organization.Personnel.Edit");
+        var personnelId = await CreatePersonnelAsync(session.Client, "1234567890");
+
+        var response = await session.Client.PutAsJsonAsync($"/api/v1/organization/personnel/{personnelId}",
+            new { NationalCode = "0987654321", FirstName = "Test", LastName = "Person", Gender = 1 });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await WithDbAsync(db => db.Personnel.Where(p => p.Id == personnelId).Select(p => p.NationalCode).SingleAsync()))
+            .ShouldBe("0987654321");
+    }
+
+    [Test]
+    public async Task UpdatePersonnel_SameNationalCode_RemainsAllowed()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.Personnel.Read", "Organization.Personnel.Edit");
+        var personnelId = await CreatePersonnelAsync(session.Client, "1234567890");
+
+        var response = await session.Client.PutAsJsonAsync($"/api/v1/organization/personnel/{personnelId}",
+            new { NationalCode = "1234567890", FirstName = "Renamed", LastName = "Person", Gender = 1 });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await WithDbAsync(db => db.Personnel.Where(p => p.Id == personnelId).Select(p => p.NationalCode).SingleAsync()))
+            .ShouldBe("1234567890");
+    }
+
+    [Test]
+    public async Task UpdatePersonnel_DuplicateNationalCodeInSameCompany_ReturnsConflict()
+    {
+        var session = await CreateAuthorizedClientAsync(_companyId, "Organization.Personnel.Create", "Organization.Personnel.Read", "Organization.Personnel.Edit");
+        await CreatePersonnelAsync(session.Client, "1111111111");
+        var personnelId = await CreatePersonnelAsync(session.Client, "2222222222");
+
+        var response = await session.Client.PutAsJsonAsync($"/api/v1/organization/personnel/{personnelId}",
+            new { NationalCode = "1111111111", FirstName = "Test", LastName = "Person", Gender = 1 });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await WithDbAsync(db => db.Personnel.Where(p => p.Id == personnelId).Select(p => p.NationalCode).SingleAsync()))
+            .ShouldBe("2222222222");
+    }
+
+    [Test]
     public async Task UploadSignature_WithValidFile_ReturnsCreated()
     {
         var session = await CreateAuthorizedClientAsync(_companyId, "Organization.PersonnelSignature.Create", "Organization.Personnel.Create");

@@ -42,6 +42,15 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         Gender = gender;
     }
 
+    /// <summary>The national code is editable; uniqueness is enforced by the caller and the database.</summary>
+    public void ChangeNationalCode(string nationalCode)
+    {
+        if (string.IsNullOrWhiteSpace(nationalCode))
+            throw new DomainRuleViolationException("NATIONAL_CODE_REQUIRED", "National code is required.");
+
+        NationalCode = nationalCode;
+    }
+
     /// <summary>
     /// Explicit status changes. Employment is never set directly: it follows an effective position assignment or
     /// <see cref="ConfirmEmployment"/>. Deactivation requires no effective position; reactivation returns to Draft or Employed.

@@ -51,6 +51,7 @@ public class UpdatePersonnelCommandHandler : IRequestHandler<UpdatePersonnelComm
             throw new DomainRuleViolationException("DUPLICATE_NATIONAL_CODE", "National code is already registered.");
 
         personnel.UpdateDetails(request.FirstName, request.LastName, request.PhoneNumber, request.Gender);
+        personnel.ChangeNationalCode(request.NationalCode);
         if (request.Status is PersonnelStatus status)
             personnel.ChangeStatus(status, _timeProvider.GetUtcNow().UtcDateTime);
 
