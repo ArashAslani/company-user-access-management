@@ -119,7 +119,15 @@ On startup in Development, the app applies EF Core migrations (never `EnsureCrea
 - the `administrator@localhost` / `Administrator1!` user;
 - the `QC` application with its resources, permissions and prerequisites.
 
-It seeds **no companies or memberships**, so every business endpoint returns 403 until a company, a `UserCompany` and access rules exist. There is no API for those yet; the integration tests create them through the data layer (see `ApiTestBase.CreateAuthorizedClientAsync`).
+### Demo workspace (Development only)
+
+`appsettings.Development.json` sets `Demo:Enabled=true`, which adds an idempotent demo workspace on top of the base seed. It never runs outside the Development environment, even if the flag is set elsewhere. It creates:
+
+- `Demo Holding` (`d3e00000-0000-0000-0000-000000000001`) and, under it, `Demo Company` (`d3e00000-0000-0000-0000-000000000002`);
+- a membership (`UserCompany` with its principal) for `administrator@localhost` in Demo Company;
+- a root role `DEMO_ADMIN` holding every QC permission (`ScopeMode.All`), assigned to that membership.
+
+With the flag off, the seed creates no companies or memberships and every business endpoint returns 403: there is no API for companies or memberships yet.
 
 ## API
 
@@ -139,9 +147,11 @@ Permission names are canonical `Resource.Action` codes, e.g. `Organization.Posit
 curl -X POST http://localhost:5000/login -H "Content-Type: application/json" \
   -d '{"email":"administrator@localhost","password":"Administrator1!"}'
 
-# 2. Call a business endpoint in a company workspace
-curl http://localhost:5000/api/v1/organization/positions/ \
-  -H "Authorization: Bearer <accessToken>" -H "X-Company-Id: <companyId>"
+# 2. Call business endpoints in the demo company workspace
+curl http://localhost:5000/api/v1/organization/positions \
+  -H "Authorization: Bearer <accessToken>" -H "X-Company-Id: d3e00000-0000-0000-0000-000000000002"
+curl http://localhost:5000/api/v1/access-control/roles \
+  -H "Authorization: Bearer <accessToken>" -H "X-Company-Id: d3e00000-0000-0000-0000-000000000002"
 ```
 
 ## Testing

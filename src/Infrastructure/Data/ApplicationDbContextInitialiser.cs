@@ -20,6 +20,9 @@ public static class InitialiserExtensions
 
         await initialiser.InitialiseAsync();
         await initialiser.SeedAsync();
+
+        if (DemoDataSeeder.IsEnabled(app.Environment, app.Configuration))
+            await scope.ServiceProvider.GetRequiredService<DemoDataSeeder>().SeedAsync();
     }
 }
 

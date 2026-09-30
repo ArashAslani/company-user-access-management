@@ -42,6 +42,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
 
         builder.Services.AddScoped<ApplicationDbContextInitialiser>();
+        builder.Services.AddScoped<DemoDataSeeder>();
 
         builder.Services.AddScoped<IAccessEvaluator, AccessEvaluator>();
         builder.Services.AddScoped<IAdminAuthority, AdminAuthority>();
