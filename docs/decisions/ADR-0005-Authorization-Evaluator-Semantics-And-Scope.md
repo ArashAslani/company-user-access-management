@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted — **superseded in part by [ADR-0006](ADR-0006-Personnel-Tenancy-External-Identity-And-Root-GSA.md) and [ADR-0007](ADR-0007-Optimistic-Concurrency-And-Authorization-Cache.md)** (personnel pool / unrestricted GlobalSuperAdmin / "no caching" limitation). The evaluator semantics below remain authoritative unless a newer ADR says otherwise.
 
 ## Date
 
@@ -29,7 +29,7 @@ This ADR records the semantics the evaluator (`AccessEvaluator`) now implements.
 For a request `(user, company, application, permission, scopeType?, scopeKey?)`:
 
 1. **Unknown application or permission:** denied (`DENIED_APPLICATION`, `DENIED_PERMISSION_NOT_FOUND`).
-2. **Global super-admin:** an active, unexpired `GlobalSuperAdmin` role held through any active membership allows everything (`ALLOWED_GLOBAL_SUPER_ADMIN`).
+2. **Global super-admin:** an active, unexpired `GlobalSuperAdmin` role held through any active membership allows everything (`ALLOWED_GLOBAL_SUPER_ADMIN`). *(Root-company restriction: see ADR-0006.)*
 3. **Membership:** there must be an active `UserCompany` in the request company, otherwise `DENIED_MEMBERSHIP`.
 4. **Company super-admin:** an active, unexpired `CompanySuperAdmin` role in that company allows everything (`ALLOWED_COMPANY_SUPER_ADMIN`).
 5. **Rule evaluation:** everything else goes through the rule evaluation below.

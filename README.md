@@ -18,7 +18,7 @@ It keeps three concerns separate:
 
 ### Authorization semantics
 
-These rules are recorded in [ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md) and each one has a named test.
+These rules are recorded in [ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md) (superseded in part by [ADR-0006](docs/decisions/ADR-0006-Personnel-Tenancy-External-Identity-And-Root-GSA.md) / [ADR-0007](docs/decisions/ADR-0007-Optimistic-Concurrency-And-Authorization-Cache.md)) and each one has a named test.
 
 | Rule | Behaviour |
 |---|---|
@@ -29,7 +29,7 @@ These rules are recorded in [ADR-0005](docs/decisions/ADR-0005-Authorization-Eva
 | Validity | Inactive or expired roles grant nothing, but their DENYs still apply. Super-admin roles follow the same validity rules. |
 | Scopes (fail-closed) | `None` matches only unscoped requests, `All` matches any scope, and `Selected` matches only an exact `(type, key)` pair. |
 | Delegation | Valid only while the delegator is an active member of the same company and is still allowed the permission, not counting delegations. |
-| Super admins | `CompanySuperAdmin` applies within its company; `GlobalSuperAdmin` applies across companies. These kinds cannot be created, edited or escalated to through the API. |
+| Super admins | `CompanySuperAdmin` applies within its company; `GlobalSuperAdmin` applies across companies **only when the role belongs to a root company** (`ParentCompanyId == null`). These kinds cannot be created, edited or escalated to through the API. |
 | Admin authority | Changing a role's rules (update, copy) or assigning it (bulk assign) also requires **one** of the actor's roles to be an ancestor of the target role and to hold, in its own branch, every granted permission at an equal or wider scope. Super admins bypass the check. |
 | Single application | Administration is locked to the `QC` application. Roles and resources of any other application answer 404. |
 
@@ -48,10 +48,23 @@ Every business request carries `Authorization: Bearer <token>` and `X-Company-Id
 | A malformed request (missing or overlong field, bad national code, unknown enum, reversed date range, pagination out of bounds) | 400, with an `errors` map |
 | Missing permission, an `X-Company-Id` without an active membership, or an account deactivated after its token was issued | 403 |
 | A body or query `companyId` that differs from the workspace | 403 |
-| Another company's position, role, assignment or membership, referenced by id | 404 |
-| A domain rule violation (overlap, cycle, duplicate code, sealed assignment, …) | 409, with a `code` in the ProblemDetails |
+| Another company's position, role, personnel, assignment or membership, referenced by id | 404 |
+| A domain rule violation (overlap, cycle, duplicate code, sealed assignment, external identity conflict, …) | 409, with a `code` in the ProblemDetails |
+| A concurrent writer changed the same personnel or company revision | 409 `CONCURRENCY_CONFLICT` |
 
-Personnel have no company of their own. A person is visible in a workspace when they hold an active assignment to one of its positions, or have no active assignment at all.
+### Tenant model
+
+Companies are independent tenants. Personnel belongs to exactly one company (immutable `CompanyId`). There is no global unassigned personnel pool. Cross-tenant reads and writes by id return 404.
+
+The same `NationalCode` can exist in different companies; within one company it is unique and editable.
+
+Organization entities (`Company`, `Position`, `Personnel`, `PersonnelPosition`) can carry `ExternalSource` + `ExternalId` for ERP/HR synchronization. External identity, not the database Guid or NationalCode, is used for integration matching via `IExternalOrganizationResolver`. This repository is integration-ready; it is not the ERP/HR poller itself.
+
+Authorization decisions use in-memory revision-keyed caching ([ADR-0007](docs/decisions/ADR-0007-Optimistic-Concurrency-And-Authorization-Cache.md)). Roles may have an optional expiry (ValidUntil), but they do not have ValidFrom, and UserRole assignments are not effective-dated.
+
+Signature ingestion/versioning is implemented (magic bytes, decode, versions). Signature retrieval/history/workflow consumption is outside portfolio scope.
+
+Personnel visibility is company ownership, not assignment-based pooling.
 
 ## Architecture
 
@@ -171,8 +184,8 @@ All tests run the real stack: migrations applied to a temporary file-backed SQLi
 | Project | Tests | Covers |
 |---|---|---|
 | `tests/ArchitectureTests` | 3 | Layer dependency rules |
-| `tests/Infrastructure.IntegrationTests` | 85 | Evaluator semantics (Role Up/Down, DENY boundaries, prerequisites, validity, delegation, super admins, scopes), organization domain and lifecycle rules, forward-migration data backfills, empty-database migration and seed-twice idempotency |
-| `tests/Web.ApiIntegrationTests` | 147 | 401/403/2xx outcomes, the permission handler and CORS, tenant isolation (403/404), the QC application lock, admin authority on grant paths, account status, lifecycles, 400 contract validation, sensitive-data logging, the demo workspace, role/position/personnel workflows, and the OpenAPI surface |
+| `tests/Infrastructure.IntegrationTests` | 118 | Evaluator semantics (Role Up/Down, DENY boundaries, prerequisites, validity, delegation, root-company GlobalSuperAdmin, scopes), revision-keyed cache, two-context concurrency, external identity constraints and resolver, organization domain and lifecycle rules, forward-migration data backfills, empty-database migration and seed-twice idempotency |
+| `tests/Web.ApiIntegrationTests` | 173 | 401/403/2xx outcomes, the permission handler and CORS, tenant isolation (403/404), national-code and external-identity APIs, signature decode validation, parallel concurrency invariants, end-to-end cache revoke, the QC application lock, admin authority on grant paths, account status, lifecycles, 400 contract validation, sensitive-data logging, the demo workspace, role/position/personnel workflows, and the OpenAPI surface |
 
 CI ([build.yml](.github/workflows/build.yml)) runs restore, a Release build and the full test suite on every push and pull request to `main`.
 
@@ -180,27 +193,31 @@ CI ([build.yml](.github/workflows/build.yml)) runs restore, a Release build and 
 
 - There is no API for companies, memberships or delegations; they are created through the data layer.
 - The access decision trace is not persisted, and the `AuditLog` table is unused.
-- The following are intentionally out of scope ([ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md)):
+- The following are intentionally out of scope ([ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md), [ADR-0006](docs/decisions/ADR-0006-Personnel-Tenancy-External-Identity-And-Root-GSA.md)):
   - a correction/versioning workflow for sealed assignments;
   - Workshop entities;
   - generic attachments;
-  - a frontend.
+  - a frontend;
+  - signature retrieval / history / workflow consumption;
+  - Redis or any distributed cache;
+  - an ERP/HR poller or ETL.
 - Admin authority is enforced on grant paths only (role permission update, copy and bulk assign). Creating, editing and deleting roles is gated by the endpoint permission alone.
 - Administration covers a single application (`QC`).
-- Roles and role assignments have no effective dating; only personnel positions do.
-- The evaluator loads the company's role graph for each request, with no caching.
+- Roles may have an optional expiry (ValidUntil), but they do not have ValidFrom, and UserRole assignments are not effective-dated. Only personnel positions are effective-dated.
+- Concurrent role or rule edits in the same company can collide on `Company.AuthorizationRevision` (409 `CONCURRENCY_CONFLICT`); that is intentional ([ADR-0007](docs/decisions/ADR-0007-Optimistic-Concurrency-And-Authorization-Cache.md)).
 - SQLite only.
 
 ## Architecture decisions
 
-See [docs/decisions](docs/decisions/README.md) for the full index and the design documents.
+See [docs/decisions](docs/decisions/README.md) for the full index and the design documents. Newer Accepted ADRs take precedence over older ones.
 
 - [ADR-001](docs/decisions/ADR-001-Use-EFCore-In-Application-Layer.md): EF Core in the Application layer
 - [ADR-002](docs/decisions/ADR-002-Aspire-For-Orchestration-And-Testing.md): Aspire for local orchestration
 - [ADR-003](docs/decisions/ADR-003-MediatR-Contracts-In-Domain.md): MediatR contracts in Domain
 - [ADR-0004](docs/decisions/ADR-0004-RoleGroup-Removal-PersonnelPosition-Effective-Dating.md): RoleGroup removal and PersonnelPosition effective dating
-- [ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md): Evaluator semantics, tenant isolation and scope
-
+- [ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md): Evaluator semantics, tenant isolation and scope (superseded in part by ADR-0006 / ADR-0007)
+- [ADR-0006](docs/decisions/ADR-0006-Personnel-Tenancy-External-Identity-And-Root-GSA.md): Personnel tenancy, external identity and root-company Global Super Admin
+- [ADR-0007](docs/decisions/ADR-0007-Optimistic-Concurrency-And-Authorization-Cache.md): Optimistic concurrency and revision-keyed authorization cache
 ## Technology stack
 
 - ASP.NET Core 10 minimal APIs, ASP.NET Core Identity (bearer tokens)
