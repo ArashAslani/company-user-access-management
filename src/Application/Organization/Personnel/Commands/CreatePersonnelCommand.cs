@@ -1,3 +1,4 @@
+using CompanyAccessManagement.Application.Common.Audit;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Application.Common.Validation;
@@ -26,12 +27,14 @@ public class CreatePersonnelCommandHandler : IRequestHandler<CreatePersonnelComm
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
     private readonly TimeProvider _timeProvider;
+    private readonly IAuditWriter _audit;
 
-    public CreatePersonnelCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider)
+    public CreatePersonnelCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider, IAuditWriter audit)
     {
         _context = context;
         _workspace = workspace;
         _timeProvider = timeProvider;
+        _audit = audit;
     }
 
     public async Task<Guid> Handle(CreatePersonnelCommand request, CancellationToken cancellationToken)
@@ -63,6 +66,7 @@ public class CreatePersonnelCommandHandler : IRequestHandler<CreatePersonnelComm
         personnel.ChangeStatus(request.Status, _timeProvider.GetUtcNow().UtcDateTime);
 
         _context.Personnel.Add(personnel);
+        _audit.Write(new AuditWriteRequest(AuditEventTypes.PersonnelCreated, nameof(Domain.Organization.Personnel), personnel.Id, CompanyId: companyId));
         await _context.SaveChangesAsync(cancellationToken);
 
         return personnel.Id;

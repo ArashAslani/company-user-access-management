@@ -1,4 +1,6 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Audit;
+using CompanyAccessManagement.Infrastructure.Audit;
 using CompanyAccessManagement.Infrastructure.Authorization;
 using CompanyAccessManagement.Infrastructure.Data;
 using CompanyAccessManagement.Infrastructure.Data.Interceptors;
@@ -37,6 +39,9 @@ public static class DependencyInjection
         builder.Services.AddMemoryCache();
         builder.Services.AddScoped<IAccessEvaluator, AccessEvaluator>();
         builder.Services.AddScoped<IAdminAuthority, AdminAuthority>();
+        builder.Services.AddScoped<IAuditOperation, AuditOperation>();
+        builder.Services.AddScoped<IAuditWriter, AuditWriter>();
+        builder.Services.AddScoped<IDelegationAuthority, DelegationAuthority>();
         builder.Services.AddScoped<IExternalOrganizationResolver, ExternalOrganizationResolver>();
         builder.Services.AddSingleton<ISignatureImageValidator, ImageSharpSignatureValidator>();
 

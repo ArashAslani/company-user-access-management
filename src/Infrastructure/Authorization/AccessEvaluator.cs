@@ -19,7 +19,7 @@ namespace CompanyAccessManagement.Infrastructure.Authorization;
 /// as an active member of the request company, is allowed the permission without counting delegations.</item>
 /// </list>
 /// Decisions for active members are cached (ADR-0007) under a key that includes the membership, company and application
-/// revisions, and expire at the earliest role or rule validity boundary involved, or after <see cref=
+/// revisions, and expire at the earliest role or rule validity boundary involved, or after <see cref="MaxCacheLifetime"/>.
 public class AccessEvaluator : IAccessEvaluator
 {
     public static readonly TimeSpan MaxCacheLifetime = TimeSpan.FromMinutes(5);
@@ -36,6 +36,9 @@ public class AccessEvaluator : IAccessEvaluator
     }
 
     public async Task<AccessDecision> EvaluateAsync(AccessRequest request, CancellationToken cancellationToken = default)
+        => await EvaluateAsync(request, excludeDelegation: false, cancellationToken);
+
+    public async Task<AccessDecision> EvaluateAsync(AccessRequest request, bool excludeDelegation, CancellationToken cancellationToken = default)
     {
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
@@ -70,7 +73,7 @@ public class AccessEvaluator : IAccessEvaluator
 
         var key = new DecisionCacheKey(request.UserId, request.CompanyId, request.ApplicationCode, request.PermissionCode,
             request.ScopeType, request.ScopeKey, revisions.Membership, revisions.Company, application.PolicyRevision);
-        if (_cache.TryGetValue(key, out CachedDecision? cached) && cached!.ExpiresAt > now)
+        if (!excludeDelegation && _cache.TryGetValue(key, out CachedDecision? cached) && cached!.ExpiresAt > now)
             return cached.Decision;
 
         var session = await EvaluationSession.CreateAsync(_context, request, applicationId, permissionId.Value, now, cancellationToken);
@@ -87,14 +90,17 @@ public class AccessEvaluator : IAccessEvaluator
         }
         else
         {
-            var outcome = await session.EvaluateAsync(subject, permissionId.Value, excludeDelegation: false, cancellationToken);
+            var outcome = await session.EvaluateAsync(subject, permissionId.Value, excludeDelegation, cancellationToken);
             decision = new AccessDecision(outcome.Allowed, outcome.ReasonCode, outcome.Sources);
         }
 
-        var expiresAt = now + MaxCacheLifetime;
-        if (await session.EarliestValidityBoundaryAsync(cancellationToken) is DateTime boundary && boundary < expiresAt)
-            expiresAt = boundary;
-        _cache.Set(key, new CachedDecision(decision, expiresAt), expiresAt - now);
+        if (!excludeDelegation)
+        {
+            var expiresAt = now + MaxCacheLifetime;
+            if (await session.EarliestValidityBoundaryAsync(cancellationToken) is DateTime boundary && boundary < expiresAt)
+                expiresAt = boundary;
+            _cache.Set(key, new CachedDecision(decision, expiresAt), expiresAt - now);
+        }
 
         return decision;
     }

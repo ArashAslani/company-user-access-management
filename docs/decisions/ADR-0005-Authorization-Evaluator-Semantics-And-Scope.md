@@ -119,13 +119,13 @@ All lifecycle rules take their time from `TimeProvider`, and a violation returns
 
 ### Non-goals
 
-These are deliberately not implemented, and their stub surfaces were removed:
+These remain deliberately out of scope (Workshop, frontend, signature retrieval, Redis, ERP poller — see also ADR-0006 / ADR-0007). The four items below were Non-goals when ADR-0005 was accepted and are **superseded by [ADR-0008](ADR-0008-Delegation-Audit-Correction-Attachments.md)**:
 
-- a correction/versioning workflow for sealed personnel assignments;
-- a persistent decision audit. `AccessDecision.Sources` is a per-request **decision trace**. The `AuditLog` table exists, but nothing writes to it and no endpoint reads it;
+- ~~a correction/versioning workflow for sealed personnel assignments~~ → ADR-0008 §2;
+- ~~a persistent decision audit~~ → ADR-0008 §3 (`IAuditWriter`; `AccessDecision.Sources` remains a per-request decision trace, separate from `AuditLog`);
 - Workshop entities and workshop-based routing. `Workshop` is only a free-form scope type;
-- generic attachments. Personnel signatures remain;
-- a delegation write API. Delegated rules are evaluated, but can only be created through the data layer.
+- ~~generic attachments~~ → ADR-0008 §4 (Position/Role attachments; Personnel signatures remain separate);
+- ~~a delegation write API~~ → ADR-0008 §1 (delegated rules were already evaluated; create/revoke are now API-backed).
 
 ## Rationale
 

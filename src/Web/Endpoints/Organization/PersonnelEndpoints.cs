@@ -96,6 +96,21 @@ public sealed class PersonnelEndpoints : IEndpointGroup
         .ProducesProblem(StatusCodes.Status409Conflict)
         .ProducesProblem(StatusCodes.Status404NotFound);
 
+        group.MapPost("/{personnelId:guid}/positions/{assignmentId:guid}/corrections", async (
+            Guid personnelId,
+            Guid assignmentId,
+            CorrectPositionAssignmentCommand command,
+            ISender sender) =>
+        {
+            var id = await sender.Send(command with { PersonnelId = personnelId, AssignmentId = assignmentId });
+            return Results.Created($"/api/v1/organization/personnel/{personnelId}/positions/{id}", new { id });
+        })
+        .RequirePermission("Organization.PersonnelPosition.Correct")
+        .WithName("CorrectPositionAssignment")
+        .Produces<Guid>(StatusCodes.Status201Created)
+        .ProducesProblem(StatusCodes.Status400BadRequest)
+        .ProducesProblem(StatusCodes.Status404NotFound);
+
         // 2.5 Remove position assignment
         group.MapDelete("/{personnelId:guid}/positions/{assignmentId:guid}", async (
             Guid personnelId,

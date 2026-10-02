@@ -1,3 +1,4 @@
+using CompanyAccessManagement.Application.Common.Audit;
 using CompanyAccessManagement.Application.Common.Exceptions;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
@@ -26,12 +27,14 @@ public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermiss
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
     private readonly IAdminAuthority _adminAuthority;
+    private readonly IAuditWriter _audit;
 
-    public CopyRolePermissionsCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, IAdminAuthority adminAuthority)
+    public CopyRolePermissionsCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, IAdminAuthority adminAuthority, IAuditWriter audit)
     {
         _context = context;
         _workspace = workspace;
         _adminAuthority = adminAuthority;
+        _audit = audit;
     }
 
     public async Task<int> Handle(CopyRolePermissionsCommand request, CancellationToken cancellationToken)
@@ -72,6 +75,10 @@ public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermiss
             var existingRules = targetPrincipal.AccessRules.ToList();
             foreach (var rule in existingRules)
             {
+                _audit.Write(new AuditWriteRequest(
+                    AuditEventTypes.PermissionRevoked, nameof(AccessRule), rule.Id, AccessRuleSourceType.Role,
+                    TargetPrincipalId: targetPrincipal.Id, PermissionId: rule.PermissionId,
+                    ApplicationId: targetRole.ApplicationId, CompanyId: companyId));
                 targetPrincipal.RemoveAccessRule(rule.Id);
             }
         }
@@ -90,6 +97,10 @@ public class CopyRolePermissionsCommandHandler : IRequestHandler<CopyRolePermiss
             }
 
             targetPrincipal.AddAccessRule(newRule);
+            _audit.Write(new AuditWriteRequest(
+                AuditEventTypes.PermissionCopied, nameof(AccessRule), newRule.Id, AccessRuleSourceType.Copy,
+                TargetPrincipalId: targetPrincipal.Id, PermissionId: newRule.PermissionId,
+                ApplicationId: targetRole.ApplicationId, CompanyId: companyId));
             copied++;
         }
 

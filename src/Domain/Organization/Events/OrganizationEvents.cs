@@ -84,6 +84,22 @@ public sealed class PrimaryPositionChangedEvent : BaseEvent
     }
 }
 
+public sealed class PersonnelPositionCorrectedEvent : BaseEvent
+{
+    public Guid PersonnelId { get; }
+    public Guid CorrectedAssignmentId { get; }
+    public Guid CorrectionAssignmentId { get; }
+    public Guid PositionId { get; }
+
+    public PersonnelPositionCorrectedEvent(Guid personnelId, Guid correctedAssignmentId, Guid correctionAssignmentId, Guid positionId)
+    {
+        PersonnelId = personnelId;
+        CorrectedAssignmentId = correctedAssignmentId;
+        CorrectionAssignmentId = correctionAssignmentId;
+        PositionId = positionId;
+    }
+}
+
 public sealed class PersonnelSignatureUploadedEvent : BaseEvent
 {
     public Guid PersonnelId { get; }

@@ -26,10 +26,13 @@ public class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
         builder.Property(al => al.AfterData);
         builder.Property(al => al.Metadata);
         builder.Property(al => al.Created).IsRequired();
+        builder.Property(al => al.OccurredAt).IsRequired();
 
         builder.HasIndex(al => new { al.CompanyId, al.Created });
         builder.HasIndex(al => new { al.ActorUserId, al.Created });
         builder.HasIndex(al => new { al.EntityType, al.EntityId, al.Created });
         builder.HasIndex(al => al.OperationId);
+        builder.HasIndex(al => new { al.CompanyId, al.OccurredAt });
+        builder.HasIndex(al => new { al.ActorUserId, al.OccurredAt });
     }
 }

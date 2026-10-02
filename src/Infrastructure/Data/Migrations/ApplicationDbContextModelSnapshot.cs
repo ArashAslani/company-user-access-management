@@ -173,6 +173,9 @@ namespace CompanyAccessManagement.Infrastructure.Data.Migrations
                     b.Property<string>("Metadata")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("OperationId")
                         .HasColumnType("TEXT");
 
@@ -191,7 +194,11 @@ namespace CompanyAccessManagement.Infrastructure.Data.Migrations
 
                     b.HasIndex("ActorUserId", "Created");
 
+                    b.HasIndex("ActorUserId", "OccurredAt");
+
                     b.HasIndex("CompanyId", "Created");
+
+                    b.HasIndex("CompanyId", "OccurredAt");
 
                     b.HasIndex("EntityType", "EntityId", "Created");
 
@@ -490,6 +497,69 @@ namespace CompanyAccessManagement.Infrastructure.Data.Migrations
                     b.ToTable("UserRoles", "auth");
                 });
 
+            modelBuilder.Entity("CompanyAccessManagement.Domain.Organization.Attachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("Created")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("LastModified")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("OwnerType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("UploadedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("OwnerType", "OwnerId");
+
+                    b.ToTable("Attachments", "org");
+                });
+
             modelBuilder.Entity("CompanyAccessManagement.Domain.Organization.Company", b =>
                 {
                     b.Property<Guid>("Id")
@@ -643,6 +713,9 @@ namespace CompanyAccessManagement.Infrastructure.Data.Migrations
             modelBuilder.Entity("CompanyAccessManagement.Domain.Organization.PersonnelPosition", b =>
                 {
                     b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("CorrectsAssignmentId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedAt")
@@ -1153,6 +1226,15 @@ namespace CompanyAccessManagement.Infrastructure.Data.Migrations
                     b.Navigation("Role");
 
                     b.Navigation("UserCompany");
+                });
+
+            modelBuilder.Entity("CompanyAccessManagement.Domain.Organization.Attachment", b =>
+                {
+                    b.HasOne("CompanyAccessManagement.Domain.Organization.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("CompanyAccessManagement.Domain.Organization.Company", b =>

@@ -1,3 +1,4 @@
+using CompanyAccessManagement.Application.Common.Audit;
 using CompanyAccessManagement.Application.Common.Hierarchy;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
@@ -24,12 +25,14 @@ public class UpdatePositionCommandHandler : IRequestHandler<UpdatePositionComman
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
     private readonly TimeProvider _timeProvider;
+    private readonly IAuditWriter _audit;
 
-    public UpdatePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider)
+    public UpdatePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider, IAuditWriter audit)
     {
         _context = context;
         _workspace = workspace;
         _timeProvider = timeProvider;
+        _audit = audit;
     }
 
     public async Task Handle(UpdatePositionCommand request, CancellationToken cancellationToken)
@@ -41,6 +44,8 @@ public class UpdatePositionCommandHandler : IRequestHandler<UpdatePositionComman
             .FirstOrDefaultAsync(p => p.Id == request.Id && p.CompanyId == companyId, cancellationToken);
 
         Guard.Against.NotFound(request.Id, position);
+        var oldParentId = position.ParentPositionId;
+        var oldStatus = position.Status;
 
         // Read the company revision before the hierarchy snapshot: a concurrent parent change commits a newer
         // revision, so this save fails instead of both writers passing the cycle check on stale reads.
@@ -87,6 +92,13 @@ public class UpdatePositionCommandHandler : IRequestHandler<UpdatePositionComman
 
         position.SetStatus(request.Status, _timeProvider.GetUtcNow().UtcDateTime);
 
+        _audit.Write(new AuditWriteRequest(AuditEventTypes.PositionUpdated, nameof(Position), position.Id, CompanyId: companyId));
+        if (oldParentId != position.ParentPositionId)
+            _audit.Write(new AuditWriteRequest(AuditEventTypes.PositionParentChanged, nameof(Position), position.Id, CompanyId: companyId));
+        if (oldStatus != position.Status)
+            _audit.Write(new AuditWriteRequest(
+                position.Status == PositionStatus.Active ? AuditEventTypes.PositionActivated : AuditEventTypes.PositionDeactivated,
+                nameof(Position), position.Id, CompanyId: companyId));
         await _context.SaveChangesAsync(cancellationToken);
     }
 }

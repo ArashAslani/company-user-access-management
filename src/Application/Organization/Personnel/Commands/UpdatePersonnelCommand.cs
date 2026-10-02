@@ -1,3 +1,4 @@
+using CompanyAccessManagement.Application.Common.Audit;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Application.Common.Validation;
@@ -27,12 +28,14 @@ public class UpdatePersonnelCommandHandler : IRequestHandler<UpdatePersonnelComm
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
     private readonly TimeProvider _timeProvider;
+    private readonly IAuditWriter _audit;
 
-    public UpdatePersonnelCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider)
+    public UpdatePersonnelCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider, IAuditWriter audit)
     {
         _context = context;
         _workspace = workspace;
         _timeProvider = timeProvider;
+        _audit = audit;
     }
 
     public async Task Handle(UpdatePersonnelCommand request, CancellationToken cancellationToken)
@@ -45,6 +48,7 @@ public class UpdatePersonnelCommandHandler : IRequestHandler<UpdatePersonnelComm
             .FirstOrDefaultAsync(p => p.Id == request.Id, cancellationToken);
 
         Guard.Against.NotFound(request.Id, personnel);
+        var oldStatus = personnel.Status;
 
         var exists = await _context.Personnel
             .AnyAsync(p => p.CompanyId == companyId && p.NationalCode == request.NationalCode && p.Id != request.Id, cancellationToken);
@@ -63,6 +67,9 @@ public class UpdatePersonnelCommandHandler : IRequestHandler<UpdatePersonnelComm
         if (request.Status is PersonnelStatus status)
             personnel.ChangeStatus(status, _timeProvider.GetUtcNow().UtcDateTime);
 
+        _audit.Write(new AuditWriteRequest(AuditEventTypes.PersonnelUpdated, nameof(CompanyAccessManagement.Domain.Organization.Personnel), personnel.Id, CompanyId: companyId));
+        if (oldStatus != personnel.Status)
+            _audit.Write(new AuditWriteRequest(AuditEventTypes.PersonnelStatusChanged, nameof(CompanyAccessManagement.Domain.Organization.Personnel), personnel.Id, CompanyId: companyId));
         await _context.SaveChangesAsync(cancellationToken);
     }
 }

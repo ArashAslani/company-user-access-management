@@ -1,7 +1,10 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Models;
+using CompanyAccessManagement.Application.Organization.Attachments.Commands;
+using CompanyAccessManagement.Application.Organization.Attachments.Queries;
 using CompanyAccessManagement.Application.Organization.Positions.Queries;
 using CompanyAccessManagement.Application.Organization.Positions.Commands;
+using CompanyAccessManagement.Domain.Organization;
 using CompanyAccessManagement.Web.Authorization;
 using CompanyAccessManagement.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
@@ -125,5 +128,40 @@ public sealed class PositionEndpoints : IEndpointGroup
         .WithName("GetPositionSummary")
         .Produces<PositionSummaryDto>(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapPost("/{id:guid}/attachments", async (Guid id, IFormFile file, ISender sender) =>
+        {
+            using var stream = new MemoryStream((int)file.Length);
+            await file.CopyToAsync(stream);
+            var attachmentId = await sender.Send(new UploadAttachmentCommand
+            {
+                OwnerType = AttachmentOwnerType.Position,
+                OwnerId = id,
+                FileName = file.FileName,
+                MimeType = file.ContentType,
+                Content = stream.ToArray()
+            });
+            return Results.Created($"{RoutePrefix}/{id}/attachments/{attachmentId}", new { id = attachmentId });
+        })
+        .RequirePermission("Attachment.Create")
+        .WithName("UploadPositionAttachment")
+        .DisableAntiforgery()
+        .WithMetadata(new RequestSizeLimitAttribute(Attachment.MaxBytes + 64 * 1024));
+
+        group.MapGet("/{id:guid}/attachments/{attachmentId:guid}", async (Guid id, Guid attachmentId, ISender sender) =>
+        {
+            var file = await sender.Send(new DownloadAttachmentQuery(AttachmentOwnerType.Position, id, attachmentId));
+            return Results.File(file.Content, file.MimeType, file.FileName);
+        })
+        .RequirePermission("Attachment.Read")
+        .WithName("DownloadPositionAttachment");
+
+        group.MapDelete("/{id:guid}/attachments/{attachmentId:guid}", async (Guid id, Guid attachmentId, ISender sender) =>
+        {
+            await sender.Send(new DeleteAttachmentCommand(AttachmentOwnerType.Position, id, attachmentId));
+            return Results.NoContent();
+        })
+        .RequirePermission("Attachment.Delete")
+        .WithName("DeletePositionAttachment");
     }
 }

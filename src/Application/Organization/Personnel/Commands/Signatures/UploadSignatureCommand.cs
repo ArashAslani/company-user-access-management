@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using CompanyAccessManagement.Application.Common.Audit;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.Common;
@@ -22,13 +23,15 @@ public class UploadSignatureCommandHandler : IRequestHandler<UploadSignatureComm
     private readonly IUser _user;
     private readonly ICurrentWorkspace _workspace;
     private readonly ISignatureImageValidator _imageValidator;
+    private readonly IAuditWriter _audit;
 
-    public UploadSignatureCommandHandler(IApplicationDbContext context, IUser user, ICurrentWorkspace workspace, ISignatureImageValidator imageValidator)
+    public UploadSignatureCommandHandler(IApplicationDbContext context, IUser user, ICurrentWorkspace workspace, ISignatureImageValidator imageValidator, IAuditWriter audit)
     {
         _context = context;
         _user = user;
         _workspace = workspace;
         _imageValidator = imageValidator;
+        _audit = audit;
     }
 
     public async Task<Guid> Handle(UploadSignatureCommand request, CancellationToken cancellationToken)
@@ -53,8 +56,21 @@ public class UploadSignatureCommandHandler : IRequestHandler<UploadSignatureComm
 
         var contentHash = Convert.ToHexString(SHA256.HashData(request.Content));
 
+        var oldSignature = personnel.GetCurrentSignature();
         var signature = personnel.UploadSignature(request.Content, request.ContentType, contentHash, _user.Id);
 
+        _audit.Write(new AuditWriteRequest(
+            oldSignature is null ? AuditEventTypes.SignatureUploaded : AuditEventTypes.SignatureReplaced,
+            "PersonnelSignature",
+            signature.Id,
+            Metadata: AuditJson.Serialize(new
+            {
+                OldSignatureId = oldSignature?.Id,
+                NewSignatureId = signature.Id,
+                OldHash = oldSignature?.ContentHash,
+                NewHash = signature.ContentHash
+            }),
+            CompanyId: companyId));
         await _context.SaveChangesAsync(cancellationToken);
 
         return signature.Id;

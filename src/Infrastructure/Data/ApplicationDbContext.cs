@@ -22,6 +22,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<Position> Positions => Set<Position>();
     public DbSet<PersonnelPosition> PersonnelPositions => Set<PersonnelPosition>();
     public DbSet<PersonnelSignature> PersonnelSignatures => Set<PersonnelSignature>();
+    public DbSet<Attachment> Attachments => Set<Attachment>();
 
     // AccessControl / Authorization
     public DbSet<UserCompany> UserCompanies => Set<UserCompany>();

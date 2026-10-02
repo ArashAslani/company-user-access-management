@@ -1,3 +1,4 @@
+using CompanyAccessManagement.Application.Common.Audit;
 using CompanyAccessManagement.Application.Common.Exceptions;
 using CompanyAccessManagement.Application.Common.Hierarchy;
 using CompanyAccessManagement.Application.Common.Interfaces;
@@ -23,11 +24,13 @@ public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand>
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
+    private readonly IAuditWriter _audit;
 
-    public UpdateRoleCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace)
+    public UpdateRoleCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, IAuditWriter audit)
     {
         _context = context;
         _workspace = workspace;
+        _audit = audit;
     }
 
     public async Task Handle(UpdateRoleCommand request, CancellationToken cancellationToken)
@@ -39,6 +42,7 @@ public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand>
             .FirstOrDefaultAsync(r => r.Id == request.Id && r.CompanyId == companyId, cancellationToken);
 
         Guard.Against.NotFound(request.Id, role);
+        var oldParentId = role.ParentRoleId;
 
         // Super-admin roles cannot be edited, and no role can be escalated to one, through the API.
         if (role.Kind != RoleKind.Standard || request.Kind != RoleKind.Standard)
@@ -87,6 +91,14 @@ public class UpdateRoleCommandHandler : IRequestHandler<UpdateRoleCommand>
 
         role.SetStatus(request.Status);
 
+        if (oldParentId != role.ParentRoleId)
+            _audit.Write(new AuditWriteRequest(
+                AuditEventTypes.RoleParentChanged,
+                nameof(Role),
+                role.Id,
+                AccessRuleSourceType.Role,
+                ApplicationId: role.ApplicationId,
+                CompanyId: companyId));
         await _context.SaveChangesAsync(cancellationToken);
     }
 }

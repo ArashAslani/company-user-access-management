@@ -1,3 +1,4 @@
+using CompanyAccessManagement.Application.Common.Audit;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Application.Common.Validation;
@@ -23,12 +24,14 @@ public class AssignPositionCommandHandler : IRequestHandler<AssignPositionComman
     private readonly IApplicationDbContext _context;
     private readonly TimeProvider _timeProvider;
     private readonly ICurrentWorkspace _workspace;
+    private readonly IAuditWriter _audit;
 
-    public AssignPositionCommandHandler(IApplicationDbContext context, TimeProvider timeProvider, ICurrentWorkspace workspace)
+    public AssignPositionCommandHandler(IApplicationDbContext context, TimeProvider timeProvider, ICurrentWorkspace workspace, IAuditWriter audit)
     {
         _context = context;
         _timeProvider = timeProvider;
         _workspace = workspace;
+        _audit = audit;
     }
 
     public async Task<Guid> Handle(AssignPositionCommand request, CancellationToken cancellationToken)
@@ -64,6 +67,19 @@ public class AssignPositionCommandHandler : IRequestHandler<AssignPositionComman
             positionCompanies);
         assignment.SetExternalIdentity(externalSource, externalId);
 
+        var afterData = AuditJson.Serialize(new
+        {
+            personnelId = personnel.Id,
+            assignment.PositionId,
+            assignment.EffectiveFrom,
+            assignment.EffectiveTo,
+            assignment.IsPrimary
+        });
+        _audit.Write(new AuditWriteRequest(AuditEventTypes.PersonnelPositionAssigned, "PersonnelPosition", assignment.Id,
+            AfterData: afterData, CompanyId: companyId));
+        if (assignment.IsPrimary)
+            _audit.Write(new AuditWriteRequest(AuditEventTypes.PrimaryPositionChanged, "PersonnelPosition", assignment.Id,
+                AfterData: afterData, CompanyId: companyId));
         await _context.SaveChangesAsync(cancellationToken);
 
         return assignment.Id;

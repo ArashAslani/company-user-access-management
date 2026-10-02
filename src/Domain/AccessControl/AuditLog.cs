@@ -18,12 +18,16 @@ public sealed class AuditLog : BaseAuditableEntity<Guid>
     public string? AfterData { get; private set; }
     public string? Metadata { get; private set; }
 
+    /// <summary>UTC instant of the change; queried and ordered instead of <see cref="BaseAuditableEntity{TId}.Created"/>.</summary>
+    public DateTime OccurredAt { get; private set; }
+
     private AuditLog() { }
 
     public AuditLog(Guid? companyId, Guid? applicationId, Guid actorUserId, Guid operationId, string entityType, Guid entityId, string eventType,
-        AccessRuleSourceType sourceType, string? beforeData = null, string? afterData = null, string? metadata = null,
+        AccessRuleSourceType sourceType, DateTime occurredAt, string? beforeData = null, string? afterData = null, string? metadata = null,
         Guid? targetPrincipalId = null, Guid? permissionId = null)
     {
+        OccurredAt = occurredAt;
         CompanyId = companyId;
         ApplicationId = applicationId;
         ActorUserId = actorUserId;

@@ -2,6 +2,9 @@ using CompanyAccessManagement.Application.AccessControl.Roles.Commands;
 using CompanyAccessManagement.Application.AccessControl.Roles.Commands.BulkAssignRole;
 using CompanyAccessManagement.Application.AccessControl.Roles.Queries;
 using CompanyAccessManagement.Application.Common.Models;
+using CompanyAccessManagement.Application.Organization.Attachments.Commands;
+using CompanyAccessManagement.Application.Organization.Attachments.Queries;
+using CompanyAccessManagement.Domain.Organization;
 using CompanyAccessManagement.Web.Authorization;
 using CompanyAccessManagement.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
@@ -157,5 +160,50 @@ public sealed class RoleEndpoints : IEndpointGroup
         .Produces<BulkAssignRoleResult>(StatusCodes.Status200OK)
         .ProducesProblem(StatusCodes.Status400BadRequest)
         .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapDelete("/{id:guid}/users/{userCompanyId:guid}", async (Guid id, Guid userCompanyId, ISender sender) =>
+        {
+            await sender.Send(new RemoveUserRoleCommand(id, userCompanyId));
+            return Results.NoContent();
+        })
+        .RequirePermission("AccessManagement.Role.Unassign")
+        .WithName("RemoveUserRole")
+        .Produces(StatusCodes.Status204NoContent)
+        .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapPost("/{id:guid}/attachments", async (Guid id, IFormFile file, ISender sender) =>
+        {
+            using var stream = new MemoryStream((int)file.Length);
+            await file.CopyToAsync(stream);
+            var attachmentId = await sender.Send(new UploadAttachmentCommand
+            {
+                OwnerType = AttachmentOwnerType.Role,
+                OwnerId = id,
+                FileName = file.FileName,
+                MimeType = file.ContentType,
+                Content = stream.ToArray()
+            });
+            return Results.Created($"{RoutePrefix}/{id}/attachments/{attachmentId}", new { id = attachmentId });
+        })
+        .RequirePermission("Attachment.Create")
+        .WithName("UploadRoleAttachment")
+        .DisableAntiforgery()
+        .WithMetadata(new RequestSizeLimitAttribute(Attachment.MaxBytes + 64 * 1024));
+
+        group.MapGet("/{id:guid}/attachments/{attachmentId:guid}", async (Guid id, Guid attachmentId, ISender sender) =>
+        {
+            var file = await sender.Send(new DownloadAttachmentQuery(AttachmentOwnerType.Role, id, attachmentId));
+            return Results.File(file.Content, file.MimeType, file.FileName);
+        })
+        .RequirePermission("Attachment.Read")
+        .WithName("DownloadRoleAttachment");
+
+        group.MapDelete("/{id:guid}/attachments/{attachmentId:guid}", async (Guid id, Guid attachmentId, ISender sender) =>
+        {
+            await sender.Send(new DeleteAttachmentCommand(AttachmentOwnerType.Role, id, attachmentId));
+            return Results.NoContent();
+        })
+        .RequirePermission("Attachment.Delete")
+        .WithName("DeleteRoleAttachment");
     }
 }

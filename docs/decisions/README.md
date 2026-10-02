@@ -12,9 +12,10 @@ An ADR captures a significant architectural decision: the context that led to it
 | [ADR-002](ADR-002-Aspire-For-Orchestration-And-Testing.md) | Aspire for Orchestration and Testing | 2026-03-12 | Accepted for local orchestration (`src/AppHost`); tests use `WebApplicationFactory` with file-backed SQLite instead of Aspire test hosts |
 | [ADR-003](ADR-003-MediatR-Contracts-In-Domain.md) | MediatR.Contracts Reference in Domain | 2026-03-16 | Accepted (inherited from the template) |
 | [ADR-0004](ADR-0004-RoleGroup-Removal-PersonnelPosition-Effective-Dating.md) | RoleGroup removal and PersonnelPosition effective dating | — | Accepted |
-| [ADR-0005](ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md) | Authorization evaluator semantics, tenant isolation and scope | 2026-09-30 | Accepted (superseded in part by ADR-0006 / ADR-0007) |
+| [ADR-0005](ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md) | Authorization evaluator semantics, tenant isolation and scope | 2026-09-30 | Accepted (superseded in part by ADR-0006 / ADR-0007 / ADR-0008) |
 | [ADR-0006](ADR-0006-Personnel-Tenancy-External-Identity-And-Root-GSA.md) | Personnel tenancy, external identity and root-company Global Super Admin | 2026-10-01 | Accepted |
 | [ADR-0007](ADR-0007-Optimistic-Concurrency-And-Authorization-Cache.md) | Optimistic concurrency and revision-keyed authorization cache | 2026-10-01 | Accepted |
+| [ADR-0008](ADR-0008-Delegation-Audit-Correction-Attachments.md) | Delegation write API, persistent audit, assignment correction and attachments | 2026-10-02 | Accepted |
 
 ## Design documents
 

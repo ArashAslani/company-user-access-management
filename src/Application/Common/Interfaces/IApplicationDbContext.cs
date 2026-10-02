@@ -12,6 +12,7 @@ public interface IApplicationDbContext
     DbSet<Position> Positions { get; }
     DbSet<PersonnelPosition> PersonnelPositions { get; }
     DbSet<PersonnelSignature> PersonnelSignatures { get; }
+    DbSet<Attachment> Attachments { get; }
 
     // AccessControl / Authorization
     DbSet<UserCompany> UserCompanies { get; }

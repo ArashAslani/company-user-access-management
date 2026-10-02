@@ -141,6 +141,7 @@ public class ApplicationDbContextInitialiser
         EnsurePermission(organization, "PersonnelPosition.Create", "Create personnel position assignment");
         EnsurePermission(organization, "PersonnelPosition.Edit", "Edit personnel position assignment");
         EnsurePermission(organization, "PersonnelPosition.Delete", "Delete personnel position assignment");
+        EnsurePermission(organization, "PersonnelPosition.Correct", "Correct historical personnel position assignment");
         EnsurePermission(organization, "PersonnelSignature.Create", "Create personnel signature");
         EnsurePermission(organization, "Position.Read", "Read positions");
         EnsurePermission(organization, "Position.Create", "Create positions");
@@ -158,6 +159,15 @@ public class ApplicationDbContextInitialiser
         EnsurePermission(accessMgmt, "Permission.Assign", "Assign permissions");
         EnsurePermission(accessMgmt, "RuleScope.Read", "Read rule scopes");
         EnsurePermission(accessMgmt, "Resource.Read", "Read resources");
+        EnsurePermission(accessMgmt, "Role.Unassign", "Remove a role from a user");
+        EnsurePermission(accessMgmt, "Delegation.Create", "Create delegated access rules");
+        EnsurePermission(accessMgmt, "Delegation.Revoke", "Revoke delegated access rules");
+        EnsurePermission(accessMgmt, "AuditLog.Read", "Read audit logs");
+
+        var attachment = EnsureResource(qcApp, "Attachment", "Attachment", "Position and role attachments");
+        EnsurePermission(attachment, "Create", "Upload attachments");
+        EnsurePermission(attachment, "Read", "Read attachments");
+        EnsurePermission(attachment, "Delete", "Delete attachments");
 
         // Persist new resources/permissions so implication targets have stable ids.
         await _context.SaveChangesAsync();
@@ -171,13 +181,16 @@ public class ApplicationDbContextInitialiser
         EnsureImplication(organization, "Position.Delete", "Position.Read");
         EnsureImplication(organization, "PersonnelPosition.Edit", "PersonnelPosition.Create");
         EnsureImplication(organization, "PersonnelPosition.Delete", "PersonnelPosition.Create");
+        EnsureImplication(organization, "PersonnelPosition.Correct", "PersonnelPosition.Create");
         EnsureImplication(accessMgmt, "Role.Permissions.Manage", "Role.Read");
         EnsureImplication(accessMgmt, "Role.BulkAssign", "Role.Read");
+        EnsureImplication(accessMgmt, "Role.Unassign", "Role.Read");
         EnsureImplication(accessMgmt, "Role.Create", "Role.Read");
         EnsureImplication(accessMgmt, "Role.Edit", "Role.Read");
         EnsureImplication(accessMgmt, "Role.Delete", "Role.Read");
         EnsureImplication(accessMgmt, "Permission.Assign", "Role.Read");
         EnsureImplication(accessMgmt, "RuleScope.Read", "Resource.Read");
+        EnsureImplication(attachment, "Delete", "Read");
 
         await _context.SaveChangesAsync();
     }

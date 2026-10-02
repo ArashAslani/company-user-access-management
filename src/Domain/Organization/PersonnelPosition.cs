@@ -12,6 +12,8 @@ public sealed class PersonnelPosition : BaseEntity
     public DateTime? EffectiveTo { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime? DeactivatedAt { get; private set; }
+    /// <summary>When set, this row is a correction of a sealed historical assignment (ADR-0004 §2.7).</summary>
+    public Guid? CorrectsAssignmentId { get; private set; }
     public string? ExternalSource { get; private set; }
     public string? ExternalId { get; private set; }
 
@@ -20,7 +22,7 @@ public sealed class PersonnelPosition : BaseEntity
 
     private PersonnelPosition() { }
 
-    internal PersonnelPosition(Guid personnelId, Guid positionId, bool isPrimary, DateTime effectiveFrom, DateTime? effectiveTo, DateTime createdAt)
+    internal PersonnelPosition(Guid personnelId, Guid positionId, bool isPrimary, DateTime effectiveFrom, DateTime? effectiveTo, DateTime createdAt, Guid? correctsAssignmentId = null)
     {
         EnsureValidWindow(effectiveFrom, effectiveTo);
 
@@ -32,6 +34,7 @@ public sealed class PersonnelPosition : BaseEntity
         EffectiveFrom = effectiveFrom;
         EffectiveTo = effectiveTo;
         CreatedAt = createdAt;
+        CorrectsAssignmentId = correctsAssignmentId;
     }
 
     public bool IsActive => Status == PersonnelPositionStatus.Active;

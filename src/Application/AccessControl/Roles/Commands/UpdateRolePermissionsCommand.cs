@@ -1,3 +1,4 @@
+using CompanyAccessManagement.Application.Common.Audit;
 using CompanyAccessManagement.Application.Common.Exceptions;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
@@ -32,12 +33,14 @@ public class UpdateRolePermissionsCommandHandler : IRequestHandler<UpdateRolePer
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
     private readonly IAdminAuthority _adminAuthority;
+    private readonly IAuditWriter _audit;
 
-    public UpdateRolePermissionsCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, IAdminAuthority adminAuthority)
+    public UpdateRolePermissionsCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, IAdminAuthority adminAuthority, IAuditWriter audit)
     {
         _context = context;
         _workspace = workspace;
         _adminAuthority = adminAuthority;
+        _audit = audit;
     }
 
     public async Task Handle(UpdateRolePermissionsCommand request, CancellationToken cancellationToken)
@@ -93,6 +96,9 @@ public class UpdateRolePermissionsCommandHandler : IRequestHandler<UpdateRolePer
         foreach (var (permissionId, action, selected) in changes)
         {
             var rule = principal.AccessRules.FirstOrDefault(ar => ar.PermissionId == permissionId && ar.Effect == action.Effect);
+            var isNew = rule is null;
+            var oldMode = rule?.ScopeMode;
+            var oldScopes = rule?.Scopes.Select(s => $"{s.ScopeType}:{s.ScopeKey}").Order().ToArray() ?? [];
 
             if (rule == null)
             {
@@ -110,6 +116,16 @@ public class UpdateRolePermissionsCommandHandler : IRequestHandler<UpdateRolePer
                     rule.AddScope(action.ScopeType!, scopeKey);
                 }
             }
+
+            var newScopes = rule.Scopes.Select(s => $"{s.ScopeType}:{s.ScopeKey}").Order().ToArray();
+            if (isNew)
+                _audit.Write(new AuditWriteRequest(
+                    AuditEventTypes.PermissionGranted, nameof(AccessRule), rule.Id, AccessRuleSourceType.Role,
+                    TargetPrincipalId: principal.Id, PermissionId: permissionId, ApplicationId: role.ApplicationId, CompanyId: companyId));
+            else if (oldMode != rule.ScopeMode || !oldScopes.SequenceEqual(newScopes))
+                _audit.Write(new AuditWriteRequest(
+                    AuditEventTypes.ScopeChanged, nameof(AccessRule), rule.Id, AccessRuleSourceType.Role,
+                    TargetPrincipalId: principal.Id, PermissionId: permissionId, ApplicationId: role.ApplicationId, CompanyId: companyId));
         }
 
         // Company.AuthorizationRevision is bumped atomically by AuthorizationRevisionInterceptor (ADR-0007).

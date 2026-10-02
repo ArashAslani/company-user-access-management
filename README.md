@@ -18,7 +18,7 @@ It keeps three concerns separate:
 
 ### Authorization semantics
 
-These rules are recorded in [ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md) (superseded in part by [ADR-0006](docs/decisions/ADR-0006-Personnel-Tenancy-External-Identity-And-Root-GSA.md) / [ADR-0007](docs/decisions/ADR-0007-Optimistic-Concurrency-And-Authorization-Cache.md)) and each one has a named test.
+These rules are recorded in [ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md) (superseded in part by [ADR-0006](docs/decisions/ADR-0006-Personnel-Tenancy-External-Identity-And-Root-GSA.md) / [ADR-0007](docs/decisions/ADR-0007-Optimistic-Concurrency-And-Authorization-Cache.md) / [ADR-0008](docs/decisions/ADR-0008-Delegation-Audit-Correction-Attachments.md)) and each one has a named test.
 
 | Rule | Behaviour |
 |---|---|
@@ -33,7 +33,7 @@ These rules are recorded in [ADR-0005](docs/decisions/ADR-0005-Authorization-Eva
 | Admin authority | Changing a role's rules (update, copy) or assigning it (bulk assign) also requires **one** of the actor's roles to be an ancestor of the target role and to hold, in its own branch, every granted permission at an equal or wider scope. Super admins bypass the check. |
 | Single application | Administration is locked to the `QC` application. Roles and resources of any other application answer 404. |
 
-`IAccessEvaluator.EvaluateAsync` returns an `AccessDecision { Allowed, ReasonCode, Sources[] }`. `Sources` is a per-request **decision trace**: it records which rule and role produced the grant. It is **not** a persisted audit log. An `AuditLog` table exists in the schema, but nothing writes to it yet.
+`IAccessEvaluator.EvaluateAsync` returns an `AccessDecision { Allowed, ReasonCode, Sources[] }`. `Sources` is a per-request **decision trace**: it records which rule and role produced the grant. It is **not** the persisted audit trail. Write handlers also emit `AuditLog` rows via `IAuditWriter` ([ADR-0008](docs/decisions/ADR-0008-Delegation-Audit-Correction-Attachments.md)); the two channels stay separate.
 
 ### Tenant isolation
 
@@ -116,7 +116,7 @@ The domain enforces the following rules:
 - **Personnel positions** are effective-dated: `IsCurrentlyEffective = Active ∧ From ≤ now ∧ (To = null ∨ To > now)`, derived at read time rather than stored.
 - Overlapping assignments to the same position are rejected.
 - At most one primary position per company may be effective at a time.
-- Assignments whose effective window has ended are sealed.
+- Assignments whose effective window has ended are sealed; sealed rows can be corrected by inserting a new row that points at them (`CorrectsAssignmentId`), leaving the sealed window intact.
 - **Personnel** status follows assignments: employment is never set directly, deactivation (including `DELETE`) is a soft delete that requires no effective position, and inactive personnel cannot be assigned.
 - **Positions** with current or upcoming assignments cannot be deactivated, and inactive positions accept no assignments.
 - An account links to at most one personnel record, enforced by a filtered unique index.
@@ -153,9 +153,11 @@ With the flag off, the seed creates no companies or memberships and every busine
 | Area | Routes |
 |---|---|
 | Identity (ASP.NET Core Identity) | `POST /register`, `POST /login`, `POST /refresh`, `/manage/*`, … |
-| Positions | `GET/POST /api/v1/organization/positions`, `GET/PUT/DELETE /api/v1/organization/positions/{id}`, `GET /api/v1/organization/positions/{id}/summary`, `GET /api/v1/organization/positions/tree?holdingId=` |
-| Personnel | `GET/POST /api/v1/organization/personnel`, `GET/PUT/DELETE /api/v1/organization/personnel/{id}`, `POST /api/v1/organization/personnel/{id}/positions`, `PUT/DELETE /api/v1/organization/personnel/{personnelId}/positions/{assignmentId}`, `POST /api/v1/organization/personnel/{id}/signature` |
-| Roles | `GET/POST /api/v1/access-control/roles`, `GET/PUT/DELETE /api/v1/access-control/roles/{id}`, `GET /api/v1/access-control/roles/tree?holdingId=`, `PUT /api/v1/access-control/roles/{id}/permissions`, `POST /api/v1/access-control/roles/{id}/permissions/copy-from`, `POST /api/v1/access-control/roles/bulk-assign` |
+| Positions | `GET/POST /api/v1/organization/positions`, `GET/PUT/DELETE /api/v1/organization/positions/{id}`, `GET /api/v1/organization/positions/{id}/summary`, `GET /api/v1/organization/positions/tree?holdingId=`, `POST/GET/DELETE /api/v1/organization/positions/{id}/attachments[/{attachmentId}]` |
+| Personnel | `GET/POST /api/v1/organization/personnel`, `GET/PUT/DELETE /api/v1/organization/personnel/{id}`, `POST /api/v1/organization/personnel/{id}/positions`, `PUT/DELETE /api/v1/organization/personnel/{personnelId}/positions/{assignmentId}`, `POST /api/v1/organization/personnel/{personnelId}/positions/{assignmentId}/corrections`, `POST /api/v1/organization/personnel/{id}/signature` |
+| Roles | `GET/POST /api/v1/access-control/roles`, `GET/PUT/DELETE /api/v1/access-control/roles/{id}`, `GET /api/v1/access-control/roles/tree?holdingId=`, `PUT /api/v1/access-control/roles/{id}/permissions`, `POST /api/v1/access-control/roles/{id}/permissions/copy-from`, `POST /api/v1/access-control/roles/bulk-assign`, `DELETE /api/v1/access-control/roles/{id}/users/{userCompanyId}`, `POST/GET/DELETE /api/v1/access-control/roles/{id}/attachments[/{attachmentId}]` |
+| Delegations | `POST /api/v1/access-control/delegations`, `DELETE /api/v1/access-control/delegations/{id}` |
+| Audit | `GET /api/v1/audit/access-history` |
 | Scopes | `GET /api/v1/access-control/scopes/resources/tree?applicationId=` |
 | Docs | `GET /openapi/v1.json`, `GET /scalar` |
 
@@ -185,23 +187,21 @@ All tests run the real stack: migrations applied to a temporary file-backed SQLi
 |---|---|---|
 | `tests/ArchitectureTests` | 3 | Layer dependency rules |
 | `tests/Infrastructure.IntegrationTests` | 118 | Evaluator semantics (Role Up/Down, DENY boundaries, prerequisites, validity, delegation, root-company GlobalSuperAdmin, scopes), revision-keyed cache, two-context concurrency, external identity constraints and resolver, organization domain and lifecycle rules, forward-migration data backfills, empty-database migration and seed-twice idempotency |
-| `tests/Web.ApiIntegrationTests` | 173 | 401/403/2xx outcomes, the permission handler and CORS, tenant isolation (403/404), national-code and external-identity APIs, signature decode validation, parallel concurrency invariants, end-to-end cache revoke, the QC application lock, admin authority on grant paths, account status, lifecycles, 400 contract validation, sensitive-data logging, the demo workspace, role/position/personnel workflows, and the OpenAPI surface |
+| `tests/Web.ApiIntegrationTests` | 207 | 401/403/2xx outcomes, the permission handler and CORS, tenant isolation (403/404), national-code and external-identity APIs, signature decode validation, parallel concurrency invariants, end-to-end cache revoke, the QC application lock, admin authority on grant paths, account status, lifecycles, 400 contract validation, sensitive-data logging, the demo workspace, role/position/personnel workflows, delegation create/revoke and rejection rules, sealed-assignment correction, Position/Role attachments, persistent audit write + read filters, and the OpenAPI surface |
 
 CI ([build.yml](.github/workflows/build.yml)) runs restore, a Release build and the full test suite on every push and pull request to `main`.
 
 ## Known limitations
 
-- There is no API for companies, memberships or delegations; they are created through the data layer.
-- The access decision trace is not persisted, and the `AuditLog` table is unused.
-- The following are intentionally out of scope ([ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md), [ADR-0006](docs/decisions/ADR-0006-Personnel-Tenancy-External-Identity-And-Root-GSA.md)):
-  - a correction/versioning workflow for sealed assignments;
-  - Workshop entities;
-  - generic attachments;
+- There is no API for companies or memberships; they are created through the data layer.
+- The following are intentionally out of scope ([ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md), [ADR-0006](docs/decisions/ADR-0006-Personnel-Tenancy-External-Identity-And-Root-GSA.md), [ADR-0008](docs/decisions/ADR-0008-Delegation-Audit-Correction-Attachments.md)):
+  - Workshop entities and workshop-based routing (`ScopeType = "Workshop"` stays a free string);
   - a frontend;
   - signature retrieval / history / workflow consumption;
+  - audit export / print;
   - Redis or any distributed cache;
   - an ERP/HR poller or ETL.
-- Admin authority is enforced on grant paths only (role permission update, copy and bulk assign). Creating, editing and deleting roles is gated by the endpoint permission alone.
+- Admin authority is enforced on grant paths (role permission update, copy, bulk assign and unassign). Creating, editing and deleting roles is gated by the endpoint permission alone.
 - Administration covers a single application (`QC`).
 - Roles may have an optional expiry (ValidUntil), but they do not have ValidFrom, and UserRole assignments are not effective-dated. Only personnel positions are effective-dated.
 - Concurrent role or rule edits in the same company can collide on `Company.AuthorizationRevision` (409 `CONCURRENCY_CONFLICT`); that is intentional ([ADR-0007](docs/decisions/ADR-0007-Optimistic-Concurrency-And-Authorization-Cache.md)).
@@ -215,9 +215,10 @@ See [docs/decisions](docs/decisions/README.md) for the full index and the design
 - [ADR-002](docs/decisions/ADR-002-Aspire-For-Orchestration-And-Testing.md): Aspire for local orchestration
 - [ADR-003](docs/decisions/ADR-003-MediatR-Contracts-In-Domain.md): MediatR contracts in Domain
 - [ADR-0004](docs/decisions/ADR-0004-RoleGroup-Removal-PersonnelPosition-Effective-Dating.md): RoleGroup removal and PersonnelPosition effective dating
-- [ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md): Evaluator semantics, tenant isolation and scope (superseded in part by ADR-0006 / ADR-0007)
+- [ADR-0005](docs/decisions/ADR-0005-Authorization-Evaluator-Semantics-And-Scope.md): Evaluator semantics, tenant isolation and scope (superseded in part by ADR-0006 / ADR-0007 / ADR-0008)
 - [ADR-0006](docs/decisions/ADR-0006-Personnel-Tenancy-External-Identity-And-Root-GSA.md): Personnel tenancy, external identity and root-company Global Super Admin
 - [ADR-0007](docs/decisions/ADR-0007-Optimistic-Concurrency-And-Authorization-Cache.md): Optimistic concurrency and revision-keyed authorization cache
+- [ADR-0008](docs/decisions/ADR-0008-Delegation-Audit-Correction-Attachments.md): Delegation write API, persistent audit, assignment correction and attachments
 ## Technology stack
 
 - ASP.NET Core 10 minimal APIs, ASP.NET Core Identity (bearer tokens)

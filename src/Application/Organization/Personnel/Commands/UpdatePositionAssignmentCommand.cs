@@ -1,3 +1,4 @@
+using CompanyAccessManagement.Application.Common.Audit;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Application.Common.Validation;
@@ -25,12 +26,14 @@ public class UpdatePositionAssignmentCommandHandler : IRequestHandler<UpdatePosi
     private readonly IApplicationDbContext _context;
     private readonly TimeProvider _timeProvider;
     private readonly ICurrentWorkspace _workspace;
+    private readonly IAuditWriter _audit;
 
-    public UpdatePositionAssignmentCommandHandler(IApplicationDbContext context, TimeProvider timeProvider, ICurrentWorkspace workspace)
+    public UpdatePositionAssignmentCommandHandler(IApplicationDbContext context, TimeProvider timeProvider, ICurrentWorkspace workspace, IAuditWriter audit)
     {
         _context = context;
         _timeProvider = timeProvider;
         _workspace = workspace;
+        _audit = audit;
     }
 
     public async Task Handle(UpdatePositionAssignmentCommand request, CancellationToken cancellationToken)
@@ -46,6 +49,7 @@ public class UpdatePositionAssignmentCommandHandler : IRequestHandler<UpdatePosi
 
         var assignment = personnel.FindAssignment(request.AssignmentId)
             ?? throw new NotFoundException(request.AssignmentId.ToString(), "PersonnelPosition");
+        var wasPrimary = assignment.IsPrimary;
 
         if (!await PersonnelWorkspaceScope.IsPositionInCompanyAsync(_context, assignment.PositionId, companyId, cancellationToken))
             throw new NotFoundException(request.AssignmentId.ToString(), "PersonnelPosition");
@@ -69,6 +73,8 @@ public class UpdatePositionAssignmentCommandHandler : IRequestHandler<UpdatePosi
             positionCompanies);
         assignment.SetExternalIdentity(externalSource, externalId);
 
+        if (wasPrimary != assignment.IsPrimary)
+            _audit.Write(new AuditWriteRequest(AuditEventTypes.PrimaryPositionChanged, nameof(PersonnelPosition), assignment.Id, CompanyId: companyId));
         await _context.SaveChangesAsync(cancellationToken);
     }
 }

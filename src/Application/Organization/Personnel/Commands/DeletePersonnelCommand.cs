@@ -1,3 +1,4 @@
+using CompanyAccessManagement.Application.Common.Audit;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.Common;
@@ -17,12 +18,14 @@ public class DeletePersonnelCommandHandler : IRequestHandler<DeletePersonnelComm
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
     private readonly TimeProvider _timeProvider;
+    private readonly IAuditWriter _audit;
 
-    public DeletePersonnelCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider)
+    public DeletePersonnelCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider, IAuditWriter audit)
     {
         _context = context;
         _workspace = workspace;
         _timeProvider = timeProvider;
+        _audit = audit;
     }
 
     public async Task Handle(DeletePersonnelCommand request, CancellationToken cancellationToken)
@@ -41,6 +44,7 @@ public class DeletePersonnelCommandHandler : IRequestHandler<DeletePersonnelComm
             throw new DomainRuleViolationException("EMPLOYED_HAS_ACTIVE_POSITION", "Personnel with an active position cannot be deleted.");
 
         personnel.Deactivate(now);
+        _audit.Write(new AuditWriteRequest(AuditEventTypes.PersonnelStatusChanged, nameof(CompanyAccessManagement.Domain.Organization.Personnel), personnel.Id, CompanyId: companyId));
         await _context.SaveChangesAsync(cancellationToken);
     }
 }

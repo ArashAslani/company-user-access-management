@@ -1,3 +1,4 @@
+using CompanyAccessManagement.Application.Common.Audit;
 using CompanyAccessManagement.Application.Common.Exceptions;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
@@ -17,12 +18,14 @@ public class DeletePositionCommandHandler : IRequestHandler<DeletePositionComman
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
     private readonly TimeProvider _timeProvider;
+    private readonly IAuditWriter _audit;
 
-    public DeletePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider)
+    public DeletePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider, IAuditWriter audit)
     {
         _context = context;
         _workspace = workspace;
         _timeProvider = timeProvider;
+        _audit = audit;
     }
 
     public async Task Handle(DeletePositionCommand request, CancellationToken cancellationToken)
@@ -51,6 +54,7 @@ public class DeletePositionCommandHandler : IRequestHandler<DeletePositionComman
 
         // Soft delete - deactivate
         position.SetStatus(PositionStatus.Inactive, now);
+        _audit.Write(new AuditWriteRequest(AuditEventTypes.PositionDeactivated, nameof(Position), position.Id, CompanyId: companyId));
         await _context.SaveChangesAsync(cancellationToken);
     }
 }

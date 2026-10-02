@@ -21,6 +21,7 @@ public class PersonnelPositionConfiguration : IEntityTypeConfiguration<Personnel
         builder.Property(pp => pp.EffectiveTo);
         builder.Property(pp => pp.CreatedAt).IsRequired();
         builder.Property(pp => pp.DeactivatedAt);
+        builder.Property(pp => pp.CorrectsAssignmentId);
 
         builder.HasIndex(pp => new { pp.PersonnelId, pp.Status });
         builder.HasIndex(pp => new { pp.PositionId, pp.Status });

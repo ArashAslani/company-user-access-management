@@ -180,6 +180,38 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         AddDomainEvent(new PersonnelPositionRemovedEvent(Id, assignment.PositionId));
     }
 
+    /// <summary>
+    /// Creates a new assignment row that corrects a sealed historical record. The sealed row is left unchanged.
+    /// </summary>
+    public PersonnelPosition CorrectPositionAssignment(
+        Guid sealedAssignmentId,
+        DateTime effectiveFrom,
+        DateTime? effectiveTo,
+        bool isPrimary,
+        DateTime now,
+        IReadOnlyDictionary<Guid, Guid> positionCompanies)
+    {
+        var sealedAssignment = GetAssignment(sealedAssignmentId);
+        if (!sealedAssignment.IsSealed(now))
+            throw new DomainRuleViolationException("ASSIGNMENT_NOT_SEALED", "Only sealed (ended) assignments can be corrected; use update for open windows.");
+        if (IsSuperseded(sealedAssignment))
+            throw new DomainRuleViolationException("ASSIGNMENT_ALREADY_CORRECTED", "This assignment was already corrected; correct its latest version instead.");
+
+        EnsureNoOverlapOnSamePosition(sealedAssignment.PositionId, effectiveFrom, effectiveTo, excludeAssignmentId: sealedAssignment.Id);
+        if (isPrimary)
+            EnsureNoOverlappingPrimaryInSameCompany(sealedAssignment.PositionId, effectiveFrom, effectiveTo, excludeAssignmentId: sealedAssignment.Id, positionCompanies);
+
+        var correction = new PersonnelPosition(Id, sealedAssignment.PositionId, isPrimary, effectiveFrom, effectiveTo, now, correctsAssignmentId: sealedAssignment.Id);
+        _positions.Add(correction);
+        Touch();
+
+        if (Status == PersonnelStatus.Draft && HasEffectivePosition(now))
+            Status = PersonnelStatus.Employed;
+
+        AddDomainEvent(new PersonnelPositionCorrectedEvent(Id, sealedAssignment.Id, correction.Id, sealedAssignment.PositionId));
+        return correction;
+    }
+
     public PersonnelPosition? FindAssignment(Guid assignmentId) => _positions.FirstOrDefault(p => p.Id == assignmentId);
 
     private PersonnelPosition GetAssignment(Guid assignmentId)
@@ -199,6 +231,7 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         if (_positions.Any(p => p.PositionId == positionId
                 && p.IsActive
                 && p.Id != excludeAssignmentId
+                && !IsSuperseded(p)
                 && p.HasOverlap(effectiveFrom, effectiveTo)))
         {
             throw new DomainRuleViolationException("ASSIGNMENT_OVERLAP", "The effective window overlaps an active assignment to the same position.");
@@ -212,12 +245,15 @@ public sealed class Personnel : BaseAuditableEntity<Guid>
         var conflict = _positions.Any(p => p.IsPrimary
             && p.IsActive
             && p.Id != excludeAssignmentId
+            && !IsSuperseded(p)
             && p.HasOverlap(effectiveFrom, effectiveTo)
             && CompanyOf(p.PositionId, positionCompanies) == companyId);
 
         if (conflict)
             throw new DomainRuleViolationException("PRIMARY_OVERLAP_CONFLICT", "Another primary assignment in the same company overlaps this effective window.");
     }
+
+    private bool IsSuperseded(PersonnelPosition assignment) => _positions.Any(p => p.CorrectsAssignmentId == assignment.Id);
 
     private static Guid CompanyOf(Guid positionId, IReadOnlyDictionary<Guid, Guid> positionCompanies)
     {

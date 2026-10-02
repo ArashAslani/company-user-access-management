@@ -1,3 +1,4 @@
+using CompanyAccessManagement.Application.Common.Audit;
 using CompanyAccessManagement.Application.Common.Exceptions;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
@@ -14,12 +15,14 @@ public class BulkAssignRoleCommandHandler : IRequestHandler<BulkAssignRoleComman
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
     private readonly IAdminAuthority _adminAuthority;
+    private readonly IAuditWriter _audit;
 
-    public BulkAssignRoleCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, IAdminAuthority adminAuthority)
+    public BulkAssignRoleCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, IAdminAuthority adminAuthority, IAuditWriter audit)
     {
         _context = context;
         _workspace = workspace;
         _adminAuthority = adminAuthority;
+        _audit = audit;
     }
 
     public async Task<BulkAssignRoleResult> Handle(BulkAssignRoleCommand request, CancellationToken cancellationToken)
@@ -55,6 +58,14 @@ public class BulkAssignRoleCommandHandler : IRequestHandler<BulkAssignRoleComman
                 continue;
 
             uc.AddRole(role.Id);
+            _audit.Write(new AuditWriteRequest(
+                AuditEventTypes.RoleAssigned,
+                nameof(UserRole),
+                uc.Roles.Single(r => r.RoleId == role.Id).Id,
+                AccessRuleSourceType.Role,
+                TargetPrincipalId: uc.PrincipalId,
+                ApplicationId: role.ApplicationId,
+                CompanyId: companyId));
             created++;
         }
 

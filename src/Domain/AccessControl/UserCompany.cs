@@ -51,6 +51,15 @@ public sealed class UserCompany : BaseAuditableEntity<Guid>
         }
     }
 
+    public void AssignPrincipal(Guid principalId)
+    {
+        if (principalId == Guid.Empty)
+            throw new ArgumentException("Principal id is required.", nameof(principalId));
+
+        PrincipalId = principalId;
+        IncrementRevision();
+    }
+
     public void IncrementRevision() => AuthorizationRevision++;
 }
 

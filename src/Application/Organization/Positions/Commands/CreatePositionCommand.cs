@@ -1,3 +1,4 @@
+using CompanyAccessManagement.Application.Common.Audit;
 using CompanyAccessManagement.Application.Common.Hierarchy;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
@@ -24,12 +25,14 @@ public class CreatePositionCommandHandler : IRequestHandler<CreatePositionComman
     private readonly IApplicationDbContext _context;
     private readonly ICurrentWorkspace _workspace;
     private readonly TimeProvider _timeProvider;
+    private readonly IAuditWriter _audit;
 
-    public CreatePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider)
+    public CreatePositionCommandHandler(IApplicationDbContext context, ICurrentWorkspace workspace, TimeProvider timeProvider, IAuditWriter audit)
     {
         _context = context;
         _workspace = workspace;
         _timeProvider = timeProvider;
+        _audit = audit;
     }
 
     public async Task<Guid> Handle(CreatePositionCommand request, CancellationToken cancellationToken)
@@ -70,6 +73,7 @@ public class CreatePositionCommandHandler : IRequestHandler<CreatePositionComman
         position.SetStatus(request.Status, _timeProvider.GetUtcNow().UtcDateTime);
 
         _context.Positions.Add(position);
+        _audit.Write(new AuditWriteRequest(AuditEventTypes.PositionCreated, nameof(Position), position.Id, CompanyId: companyId));
         await _context.SaveChangesAsync(cancellationToken);
 
         return position.Id;
