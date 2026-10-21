@@ -57,6 +57,14 @@ public class ProblemDetailsExceptionHandler : IExceptionHandler
                 Type = "https://tools.ietf.org/html/rfc9110#section-15.5.6",
                 Detail = ce.Message
             }),
+            EffectiveScopesTooLargeException tooLarge => (StatusCodes.Status409Conflict, new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Effective scopes too large",
+                Type = "https://tools.ietf.org/html/rfc9110#section-15.5.10",
+                Detail = tooLarge.Message,
+                Extensions = { ["code"] = EffectiveScopesTooLargeException.Code }
+            }),
             DomainRuleViolationException de => (StatusCodes.Status409Conflict, new ProblemDetails
             {
                 Status = StatusCodes.Status409Conflict,

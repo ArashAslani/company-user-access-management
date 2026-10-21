@@ -332,6 +332,27 @@ Permission: UserRole.Create
    -- برای هر userCompanyId یک UserRole مستقل ایجاد می‌کند؛ هیچ Entity گروه پایداری ساخته نمی‌شود
 ```
 
+### 3.8 Effective Scopes (ADR-0009)
+
+سرویس QC روی Pod جدا برای فیلتر کردن لیست‌ها (مثلاً ایستگاه‌های کاری) مجموعهٔ scope keyهای مؤثر کاربر جاری را می‌پرسد. کاربر و Company فقط از Token و Workspace جاری می‌آیند؛ پارامتر `userId` پذیرفته نمی‌شود و اگر فرستاده شود نادیده گرفته می‌شود.
+
+```
+GET /api/v1/access-control/effective-scopes
+    ?applicationCode=QC&permissionCode=Workstation.Read&scopeType=Workstation
+→ 200 {
+    scopeMode: "All" | "Selected",
+    scopeType: "Workstation",
+    scopeKeys: ["F","V"],
+    revision: "<membershipRevision>.<companyAuthorizationRevision>.<policyRevision>"
+  }
+→ 304 وقتی If-None-Match با ETag (همان revision، quoted) برابر است
+→ 409 { code: "EFFECTIVE_SCOPES_TOO_LARGE" } اگر تعداد key از سقف EffectiveScopes:MaxKeys (پیش‌فرض ۵۰۰۰) بیشتر شود،
+   یا نتیجه All منهای چند key باشد و در قرارداد All/Selected جا نشود
+Permission: AccessManagement.EffectiveScopes.Read
+```
+
+`scopeKeys` فقط وقتی `scopeMode=Selected` برمی‌گردد. لیست خالی یعنی هیچ keyای مجاز نیست. `All` یعنی هر key. برای هر key مثل `k`، عضویت در این پاسخ با `Evaluate` همان permission روی `scopeType` و `scopeKey=k` یکی است. Access Management برای ScopeKey موجودیتی (Workshop/Workstation) نمی‌سازد.
+
 ---
 
 ## 4. Access History (Audit) API
@@ -384,6 +405,7 @@ Resource: Role              Actions: Read, Create, Edit, Delete
 Resource: AccessRule        Actions: Read, Create, Edit, Delete
 Resource: UserRole          Actions: Create, Delete
 Resource: RuleScope         Actions: Read
+Resource: AccessManagement  Actions: EffectiveScopes.Read
 Resource: AuditLog          Actions: Read, Export
 Resource: Attachment        Actions: Create, Read
 ```

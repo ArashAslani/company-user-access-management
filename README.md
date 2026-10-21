@@ -159,6 +159,7 @@ With the flag off, the seed creates no companies or memberships and every busine
 | Delegations | `POST /api/v1/access-control/delegations`, `DELETE /api/v1/access-control/delegations/{id}` |
 | Audit | `GET /api/v1/audit/access-history` |
 | Scopes | `GET /api/v1/access-control/scopes/resources/tree?applicationId=` |
+| Effective scopes | `GET /api/v1/access-control/effective-scopes?applicationCode=&permissionCode=&scopeType=` |
 | Docs | `GET /openapi/v1.json`, `GET /scalar` |
 
 Permission names are canonical `Resource.Action` codes, e.g. `Organization.Position.Read` and `AccessManagement.Role.Permissions.Manage`. [`src/Web/Web-webapi.http`](src/Web/Web-webapi.http) contains ready-made requests.

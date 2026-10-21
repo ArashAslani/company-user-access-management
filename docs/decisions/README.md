@@ -16,6 +16,7 @@ An ADR captures a significant architectural decision: the context that led to it
 | [ADR-0006](ADR-0006-Personnel-Tenancy-External-Identity-And-Root-GSA.md) | Personnel tenancy, external identity and root-company Global Super Admin | 2026-10-01 | Accepted |
 | [ADR-0007](ADR-0007-Optimistic-Concurrency-And-Authorization-Cache.md) | Optimistic concurrency and revision-keyed authorization cache | 2026-10-01 | Accepted |
 | [ADR-0008](ADR-0008-Delegation-Audit-Correction-Attachments.md) | Delegation write API, persistent audit, assignment correction and attachments | 2026-10-02 | Accepted |
+| [ADR-0009](ADR-0009-Effective-Scopes-Query.md) | Effective scopes query for filtered lists | 2026-10-20 | Accepted |
 
 ## Design documents
 

@@ -159,6 +159,7 @@ public class ApplicationDbContextInitialiser
         EnsurePermission(accessMgmt, "Permission.Assign", "Assign permissions");
         EnsurePermission(accessMgmt, "RuleScope.Read", "Read rule scopes");
         EnsurePermission(accessMgmt, "Resource.Read", "Read resources");
+        EnsurePermission(accessMgmt, "EffectiveScopes.Read", "Read the caller's effective scope keys");
         EnsurePermission(accessMgmt, "Role.Unassign", "Remove a role from a user");
         EnsurePermission(accessMgmt, "Delegation.Create", "Create delegated access rules");
         EnsurePermission(accessMgmt, "Delegation.Revoke", "Revoke delegated access rules");

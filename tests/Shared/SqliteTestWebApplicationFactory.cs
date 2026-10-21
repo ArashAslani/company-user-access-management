@@ -18,11 +18,14 @@ public class SqliteTestWebApplicationFactory : WebApplicationFactory<Program>
 {
     private readonly string _connectionString;
     private readonly TimeProvider? _timeProvider;
+    private readonly IReadOnlyDictionary<string, string?>? _settings;
 
     /// <param name="timeProvider">Replaces the system clock, e.g. with a FakeTimeProvider for expiry tests.</param>
-    public SqliteTestWebApplicationFactory(TimeProvider? timeProvider = null)
+    /// <param name="settings">Configuration keys applied before the host starts (for example EffectiveScopes:MaxKeys).</param>
+    public SqliteTestWebApplicationFactory(TimeProvider? timeProvider = null, IReadOnlyDictionary<string, string?>? settings = null)
     {
         _timeProvider = timeProvider;
+        _settings = settings;
         DatabasePath = Path.Combine(Path.GetTempPath(), $"company-access-api-{Guid.NewGuid():N}.db");
         _connectionString = new SqliteConnectionStringBuilder
         {
@@ -38,6 +41,11 @@ public class SqliteTestWebApplicationFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("TestIntegration");
         builder.UseSetting("ConnectionStrings:" + CompanyAccessManagement.Shared.Services.Database, _connectionString);
+        if (_settings is not null)
+        {
+            foreach (var pair in _settings)
+                builder.UseSetting(pair.Key, pair.Value);
+        }
 
         builder.ConfigureTestServices(services =>
         {

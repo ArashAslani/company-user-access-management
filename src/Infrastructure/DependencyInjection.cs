@@ -1,4 +1,5 @@
 using CompanyAccessManagement.Application.Common.Interfaces;
+using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Application.Common.Audit;
 using CompanyAccessManagement.Infrastructure.Audit;
 using CompanyAccessManagement.Infrastructure.Authorization;
@@ -37,6 +38,7 @@ public static class DependencyInjection
         builder.Services.AddScoped<DemoDataSeeder>();
 
         builder.Services.AddMemoryCache();
+        builder.Services.Configure<EffectiveScopesOptions>(builder.Configuration.GetSection(EffectiveScopesOptions.SectionName));
         builder.Services.AddScoped<IAccessEvaluator, AccessEvaluator>();
         builder.Services.AddScoped<IAdminAuthority, AdminAuthority>();
         builder.Services.AddScoped<IAuditOperation, AuditOperation>();

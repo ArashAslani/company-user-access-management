@@ -1,9 +1,11 @@
+using System.Globalization;
 using CompanyAccessManagement.Application.Common.Exceptions;
 using CompanyAccessManagement.Application.Common.Interfaces;
 using CompanyAccessManagement.Application.Common.Security;
 using CompanyAccessManagement.Domain.AccessControl;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 
 namespace CompanyAccessManagement.Infrastructure.Authorization;
 
@@ -27,12 +29,14 @@ public class AccessEvaluator : IAccessEvaluator
     private readonly IApplicationDbContext _context;
     private readonly TimeProvider _timeProvider;
     private readonly IMemoryCache _cache;
+    private readonly int _maxScopeKeys;
 
-    public AccessEvaluator(IApplicationDbContext context, TimeProvider timeProvider, IMemoryCache cache)
+    public AccessEvaluator(IApplicationDbContext context, TimeProvider timeProvider, IMemoryCache cache, IOptions<EffectiveScopesOptions> options)
     {
         _context = context;
         _timeProvider = timeProvider;
         _cache = cache;
+        _maxScopeKeys = options.Value.MaxKeys > 0 ? options.Value.MaxKeys : EffectiveScopesOptions.DefaultMaxKeys;
     }
 
     public async Task<AccessDecision> EvaluateAsync(AccessRequest request, CancellationToken cancellationToken = default)
@@ -112,6 +116,114 @@ public class AccessEvaluator : IAccessEvaluator
     /// <param name="ExpiresAt">Checked against <see cref="TimeProvider"/> on every read; the cache's own expiry is only a backstop.</param>
     private sealed record CachedDecision(AccessDecision Decision, DateTime ExpiresAt);
 
+    private sealed record EffectiveScopesCacheKey(
+        Guid UserId, Guid CompanyId, string ApplicationCode, string PermissionCode, string ScopeType,
+        long MembershipRevision, long CompanyRevision, long PolicyRevision);
+
+    private sealed record CachedScopes(EffectiveScopesResult Result, DateTime ExpiresAt);
+
+    public async Task<EffectiveScopesResult> EvaluateEffectiveScopesAsync(EffectiveScopesRequest request, CancellationToken cancellationToken = default)
+    {
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+
+        var application = await _context.Applications
+            .Where(a => a.Code == request.ApplicationCode && a.IsActive)
+            .Select(a => new { a.Id, a.PolicyRevision })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (application is null)
+            return EmptyScopes(request.ScopeType);
+
+        var permissionId = await (from p in _context.Permissions
+                                  join r in _context.Resources on p.ResourceId equals r.Id
+                                  where r.ApplicationId == application.Id && r.Code + "." + p.ActionCode == request.PermissionCode
+                                  select (Guid?)p.Id).FirstOrDefaultAsync(cancellationToken);
+        if (permissionId is null)
+            return EmptyScopes(request.ScopeType);
+
+        var globalSuperAdminRevision = await FindGlobalSuperAdminCompanyRevisionAsync(_context, request.UserId, now, cancellationToken);
+        if (globalSuperAdminRevision is not null)
+        {
+            var gsaRevision = await RevisionTokenAsync(request.UserId, request.CompanyId, application.PolicyRevision, cancellationToken);
+            return new EffectiveScopesResult(ScopeMode.All, request.ScopeType, [], $"gsa.{globalSuperAdminRevision.Value.ToString(CultureInfo.InvariantCulture)}.{gsaRevision}");
+        }
+
+        var revisions = await ReadRevisionsAsync(request.UserId, request.CompanyId, cancellationToken);
+        if (revisions is null)
+            return EmptyScopes(request.ScopeType);
+
+        var revision = FormatRevision(revisions.Value.Membership, revisions.Value.Company, application.PolicyRevision);
+        var key = new EffectiveScopesCacheKey(request.UserId, request.CompanyId, request.ApplicationCode, request.PermissionCode,
+            request.ScopeType, revisions.Value.Membership, revisions.Value.Company, application.PolicyRevision);
+        if (_cache.TryGetValue(key, out CachedScopes? cached) && cached!.ExpiresAt > now)
+            return cached.Result;
+
+        var accessRequest = new AccessRequest(request.UserId, request.CompanyId, request.ApplicationCode, request.PermissionCode, request.ScopeType);
+        var session = await EvaluationSession.CreateAsync(_context, accessRequest, application.Id, permissionId.Value, now, cancellationToken);
+        var subject = await session.LoadSubjectAsync(request.UserId, cancellationToken);
+        if (subject is null)
+            return EmptyScopes(request.ScopeType, revision);
+
+        var coverage = session.FindCompanySuperAdminRole(subject) is not null
+            ? ScopeContribution.All
+            : await session.EffectiveScopesAsync(subject, permissionId.Value, request.ScopeType, excludeDelegation: false, cancellationToken);
+
+        var result = ToResult(coverage, request.ScopeType, revision);
+
+        var expiresAt = now + MaxCacheLifetime;
+        if (await session.EarliestValidityBoundaryAsync(cancellationToken) is DateTime boundary && boundary < expiresAt)
+            expiresAt = boundary;
+        _cache.Set(key, new CachedScopes(result, expiresAt), expiresAt - now);
+        return result;
+    }
+
+    private EffectiveScopesResult ToResult(ScopeContribution coverage, string scopeType, string revision)
+    {
+        if (coverage.IsAll)
+            return new EffectiveScopesResult(ScopeMode.All, scopeType, [], revision);
+        if (coverage.IsUnrepresentable || coverage.KeyCount > _maxScopeKeys)
+            throw new EffectiveScopesTooLargeException(_maxScopeKeys);
+
+        return new EffectiveScopesResult(ScopeMode.Selected, scopeType, coverage.OrderedKeys(), revision);
+    }
+
+    private static EffectiveScopesResult EmptyScopes(string scopeType, string revision = "0.0.0")
+        => new(ScopeMode.Selected, scopeType, [], revision);
+
+    private async Task<(long Membership, long Company)?> ReadRevisionsAsync(Guid userId, Guid companyId, CancellationToken cancellationToken)
+    {
+        var revisions = await (from uc in _context.UserCompanies
+                               join c in _context.Companies on uc.CompanyId equals c.Id
+                               where uc.UserId == userId && uc.CompanyId == companyId && uc.Status == UserCompanyStatus.Active
+                               select new { Membership = uc.AuthorizationRevision, Company = c.AuthorizationRevision })
+                              .FirstOrDefaultAsync(cancellationToken);
+        return revisions is null ? null : (revisions.Membership, revisions.Company);
+    }
+
+    private async Task<string> RevisionTokenAsync(Guid userId, Guid companyId, long policyRevision, CancellationToken cancellationToken)
+    {
+        var revisions = await ReadRevisionsAsync(userId, companyId, cancellationToken);
+        return revisions is null
+            ? FormatRevision(0, 0, policyRevision)
+            : FormatRevision(revisions.Value.Membership, revisions.Value.Company, policyRevision);
+    }
+
+    private static string FormatRevision(long membership, long company, long policy)
+        => string.Create(CultureInfo.InvariantCulture, $"{membership}.{company}.{policy}");
+
+    /// <summary>Root-company authorization revision of an active GlobalSuperAdmin role, if the user holds one.</summary>
+    private static async Task<long?> FindGlobalSuperAdminCompanyRevisionAsync(IApplicationDbContext context, Guid userId, DateTime now, CancellationToken cancellationToken)
+    {
+        return await (from uc in context.UserCompanies
+                      where uc.UserId == userId && uc.Status == UserCompanyStatus.Active
+                      from ur in uc.Roles
+                      join r in context.Roles on ur.RoleId equals r.Id
+                      join c in context.Companies on r.CompanyId equals c.Id
+                      where r.Kind == RoleKind.GlobalSuperAdmin && r.Status == RoleStatus.Active
+                          && (r.ValidUntil == null || r.ValidUntil > now)
+                          && c.ParentCompanyId == null
+                      select (long?)c.AuthorizationRevision).FirstOrDefaultAsync(cancellationToken);
+    }
+
     public async Task EnsureAllowedAsync(AccessRequest request, CancellationToken cancellationToken = default)
     {
         var decision = await EvaluateAsync(request, cancellationToken);
@@ -162,6 +274,7 @@ public class AccessEvaluator : IAccessEvaluator
         private readonly ILookup<Guid, AccessRule> _roleRulesByPrincipal;
         private readonly Dictionary<Guid, List<AccessRule>> _subjectRules = [];
         private readonly Dictionary<(Guid PrincipalId, Guid? ManagingRoleId, Guid PermissionId, bool ExcludeDelegation), Outcome> _outcomes = [];
+        private readonly Dictionary<(Guid PrincipalId, Guid? ManagingRoleId, Guid PermissionId, bool ExcludeDelegation, string ScopeType), ScopeContribution> _scopeOutcomes = [];
 
         private EvaluationSession(
             IApplicationDbContext context,
@@ -330,62 +443,37 @@ public class AccessEvaluator : IAccessEvaluator
             if (directDeny)
                 return Outcome.Deny("DENIED_EXPLICIT_DENY");
 
-            var candidates = new List<RuleCandidate>();
-
-            var managing = subject.ManagingRoleId is not null;
-
-            if (!managing)
-            {
-                foreach (var rule in directRules.Where(r => IsAllowFor(r, permissionId) && r.Origin != AccessRuleOrigin.Delegated))
-                    candidates.Add(new RuleCandidate(rule, CandidateSource.DirectUser, null, null, new HashSet<Guid>()));
-            }
-
-            IEnumerable<Guid> branchRoleIds = managing ? [subject.ManagingRoleId!.Value] : subject.RoleIds;
-            foreach (var branchRoleId in branchRoleIds.Where(id => _roles.TryGet(id, out var branch) && CanGrant(branch)))
-            {
-                var ancestors = _roles.Ancestors(branchRoleId);
-
-                foreach (var originRoleId in _roles.SelfAndDescendants(branchRoleId))
-                {
-                    var grantPath = _roles.PathUpTo(originRoleId, branchRoleId);
-                    if (!grantPath.All(id => _roles.TryGet(id, out var node) && CanGrant(node)))
-                        continue;
-
-                    foreach (var principalId in _principalsByRole[originRoleId])
-                    {
-                        foreach (var rule in _roleRulesByPrincipal[principalId].Where(r => IsAllowFor(r, permissionId)))
-                        {
-                            var path = new HashSet<Guid>(grantPath);
-                            path.UnionWith(ancestors);
-                            candidates.Add(new RuleCandidate(rule, CandidateSource.RoleBranch, branchRoleId, originRoleId, path));
-                        }
-                    }
-                }
-            }
-
-            if (!excludeDelegation && !managing)
-            {
-                foreach (var rule in directRules.Where(r => IsAllowFor(r, permissionId) && r.Origin == AccessRuleOrigin.Delegated))
-                {
-                    if (await IsDelegationSourceValidAsync(rule, permissionId, cancellationToken))
-                        candidates.Add(new RuleCandidate(rule, CandidateSource.Delegation, null, null, new HashSet<Guid>()));
-                }
-            }
+            var candidates = await CollectCandidatesAsync(subject, directRules, permissionId, excludeDelegation, matchRequestScope: true, validateDelegations: true, cancellationToken);
 
             if (candidates.Count == 0)
                 return Outcome.Deny("DENIED_NO_PERMISSION");
 
             var passedDenyGate = false;
             var passing = new List<RuleCandidate>();
+            var scoped = !_requireAllScope && _request.ScopeType is not null && _request.ScopeKey is not null;
             foreach (var candidate in candidates)
             {
-                if (HasRoleDeny(candidate.PathRoleIds, p => p == permissionId))
-                    continue;
+                if (scoped)
+                {
+                    // Same candidate scope set the effective-scopes query unions. A key survives iff this returns it.
+                    if (!CandidateScope(candidate, _request.ScopeType!, id => id == permissionId).Contains(_request.ScopeKey!))
+                        continue;
 
-                passedDenyGate = true;
+                    passedDenyGate = true;
 
-                if (HasRoleDeny(candidate.PathRoleIds, prerequisites.Contains))
-                    continue;
+                    if (!CandidateScope(candidate, _request.ScopeType!, id => id == permissionId || prerequisites.Contains(id)).Contains(_request.ScopeKey!))
+                        continue;
+                }
+                else
+                {
+                    if (HasRoleDeny(candidate.PathRoleIds, p => p == permissionId))
+                        continue;
+
+                    passedDenyGate = true;
+
+                    if (HasRoleDeny(candidate.PathRoleIds, prerequisites.Contains))
+                        continue;
+                }
 
                 passing.Add(candidate);
             }
@@ -440,8 +528,8 @@ public class AccessEvaluator : IAccessEvaluator
             return false;
         }
 
-        private bool IsAllowFor(AccessRule rule, Guid permissionId)
-            => rule.Effect == AccessEffect.Allow && rule.PermissionId == permissionId && ScopeMatches(rule);
+        private static bool IsAllowRule(AccessRule rule, Guid permissionId)
+            => rule.Effect == AccessEffect.Allow && rule.PermissionId == permissionId;
 
         private bool ScopeMatches(AccessRule rule) => _requireAllScope
             ? rule.Effect == AccessEffect.Deny || rule.ScopeMode == ScopeMode.All
@@ -451,9 +539,182 @@ public class AccessEvaluator : IAccessEvaluator
                 ScopeMode.All => true,
                 ScopeMode.Selected => _request.ScopeType is not null
                     && _request.ScopeKey is not null
-                    && rule.Scopes.Any(s => s.ScopeType == _request.ScopeType && s.ScopeKey == _request.ScopeKey),
+                    && ScopeContribution.FromRule(rule, _request.ScopeType).Contains(_request.ScopeKey),
                 _ => false
             };
+
+        /// <summary>
+        /// Keys of <paramref name="scopeType"/> this ALLOW candidate still grants after path DENYs of
+        /// <paramref name="denyPermissions"/> are removed. Point evaluation and the effective-scopes query both use it.
+        /// </summary>
+        private ScopeContribution CandidateScope(RuleCandidate candidate, string scopeType, Func<Guid, bool> denyPermissions)
+        {
+            var granted = ScopeContribution.FromRule(candidate.Rule, scopeType);
+            if (granted.IsEmpty)
+                return granted;
+
+            return granted.Except(PathDenyContribution(candidate.PathRoleIds, denyPermissions, scopeType));
+        }
+
+        private ScopeContribution PathDenyContribution(IReadOnlySet<Guid> pathRoleIds, Func<Guid, bool> permissionMatches, string scopeType)
+        {
+            var denied = ScopeContribution.Empty;
+            foreach (var roleId in pathRoleIds)
+            {
+                foreach (var principalId in _principalsByRole[roleId])
+                {
+                    foreach (var rule in _roleRulesByPrincipal[principalId])
+                    {
+                        if (rule.Effect == AccessEffect.Deny && permissionMatches(rule.PermissionId))
+                            denied = denied.Union(ScopeContribution.FromRule(rule, scopeType));
+                    }
+                }
+            }
+
+            return denied;
+        }
+
+        private static ScopeContribution DirectDenyContribution(IEnumerable<AccessRule> directRules, Func<Guid, bool> permissionMatches, string scopeType)
+        {
+            var denied = ScopeContribution.Empty;
+            foreach (var rule in directRules)
+            {
+                if (rule.Effect == AccessEffect.Deny && rule.Origin != AccessRuleOrigin.Delegated && permissionMatches(rule.PermissionId))
+                    denied = denied.Union(ScopeContribution.FromRule(rule, scopeType));
+            }
+
+            return denied;
+        }
+
+        public Task<ScopeContribution> EffectiveScopesAsync(Subject subject, Guid permissionId, string scopeType, bool excludeDelegation, CancellationToken cancellationToken)
+            => EffectiveScopesAsync(subject, permissionId, scopeType, excludeDelegation, [], cancellationToken);
+
+        private async Task<ScopeContribution> EffectiveScopesAsync(Subject subject, Guid permissionId, string scopeType, bool excludeDelegation, HashSet<Guid> inProgress, CancellationToken cancellationToken)
+        {
+            var key = (subject.PrincipalId, subject.ManagingRoleId, permissionId, excludeDelegation, scopeType);
+            if (_scopeOutcomes.TryGetValue(key, out var cached))
+                return cached;
+
+            if (!inProgress.Add(permissionId))
+                return ScopeContribution.Empty;
+
+            try
+            {
+                var contribution = await EffectiveScopesUncachedAsync(subject, permissionId, scopeType, excludeDelegation, inProgress, cancellationToken);
+                _scopeOutcomes[key] = contribution;
+                return contribution;
+            }
+            finally
+            {
+                inProgress.Remove(permissionId);
+            }
+        }
+
+        private async Task<ScopeContribution> EffectiveScopesUncachedAsync(Subject subject, Guid permissionId, string scopeType, bool excludeDelegation, HashSet<Guid> inProgress, CancellationToken cancellationToken)
+        {
+            var prerequisites = TransitivePrerequisites(_directPrerequisites, permissionId);
+            var directRules = await GetSubjectRulesAsync(subject.PrincipalId, cancellationToken);
+            bool MatchesDeniedPermission(Guid id) => id == permissionId || prerequisites.Contains(id);
+
+            var directDeny = DirectDenyContribution(directRules, MatchesDeniedPermission, scopeType);
+            if (directDeny.IsAll)
+                return ScopeContribution.Empty;
+
+            var candidates = await CollectCandidatesAsync(subject, directRules, permissionId, excludeDelegation, matchRequestScope: false, validateDelegations: false, cancellationToken);
+            var union = ScopeContribution.Empty;
+            foreach (var candidate in candidates)
+            {
+                var granted = CandidateScope(candidate, scopeType, MatchesDeniedPermission);
+                if (candidate.Source == CandidateSource.Delegation)
+                {
+                    if (candidate.Rule.DelegatedFromUserId is not Guid delegatorUserId)
+                        continue;
+
+                    var delegator = await LoadSubjectAsync(delegatorUserId, cancellationToken);
+                    if (delegator is null)
+                        continue;
+
+                    // Fresh in-progress set, same as IsDelegationSourceValidAsync, and never cached (excludeDelegation: true).
+                    var source = await EffectiveScopesAsync(delegator, permissionId, scopeType, excludeDelegation: true, [], cancellationToken);
+                    granted = granted.Intersect(source);
+                }
+
+                union = union.Union(granted);
+            }
+
+            foreach (var prerequisiteId in _directPrerequisites[permissionId])
+            {
+                var required = await EffectiveScopesAsync(subject, prerequisiteId, scopeType, excludeDelegation, inProgress, cancellationToken);
+                union = union.Intersect(required);
+            }
+
+            return union.Except(directDeny);
+        }
+
+        private async Task<List<RuleCandidate>> CollectCandidatesAsync(
+            Subject subject,
+            List<AccessRule> directRules,
+            Guid permissionId,
+            bool excludeDelegation,
+            bool matchRequestScope,
+            bool validateDelegations,
+            CancellationToken cancellationToken)
+        {
+            var candidates = new List<RuleCandidate>();
+            var managing = subject.ManagingRoleId is not null;
+
+            if (!managing)
+            {
+                foreach (var rule in directRules.Where(r => IsAllowRule(r, permissionId) && r.Origin != AccessRuleOrigin.Delegated))
+                {
+                    if (matchRequestScope && !ScopeMatches(rule))
+                        continue;
+
+                    candidates.Add(new RuleCandidate(rule, CandidateSource.DirectUser, null, null, new HashSet<Guid>()));
+                }
+            }
+
+            IEnumerable<Guid> branchRoleIds = managing ? [subject.ManagingRoleId!.Value] : subject.RoleIds;
+            foreach (var branchRoleId in branchRoleIds.Where(id => _roles.TryGet(id, out var branch) && CanGrant(branch)))
+            {
+                var ancestors = _roles.Ancestors(branchRoleId);
+
+                foreach (var originRoleId in _roles.SelfAndDescendants(branchRoleId))
+                {
+                    var grantPath = _roles.PathUpTo(originRoleId, branchRoleId);
+                    if (!grantPath.All(id => _roles.TryGet(id, out var node) && CanGrant(node)))
+                        continue;
+
+                    foreach (var principalId in _principalsByRole[originRoleId])
+                    {
+                        foreach (var rule in _roleRulesByPrincipal[principalId].Where(r => IsAllowRule(r, permissionId)))
+                        {
+                            if (matchRequestScope && !ScopeMatches(rule))
+                                continue;
+
+                            var path = new HashSet<Guid>(grantPath);
+                            path.UnionWith(ancestors);
+                            candidates.Add(new RuleCandidate(rule, CandidateSource.RoleBranch, branchRoleId, originRoleId, path));
+                        }
+                    }
+                }
+            }
+
+            if (!excludeDelegation && !managing)
+            {
+                foreach (var rule in directRules.Where(r => IsAllowRule(r, permissionId) && r.Origin == AccessRuleOrigin.Delegated))
+                {
+                    if (matchRequestScope && !ScopeMatches(rule))
+                        continue;
+                    if (validateDelegations && !await IsDelegationSourceValidAsync(rule, permissionId, cancellationToken))
+                        continue;
+
+                    candidates.Add(new RuleCandidate(rule, CandidateSource.Delegation, null, null, new HashSet<Guid>()));
+                }
+            }
+
+            return candidates;
+        }
 
         private async Task<List<AccessRule>> GetSubjectRulesAsync(Guid principalId, CancellationToken cancellationToken)
         {
